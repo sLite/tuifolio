@@ -8,6 +8,7 @@ use crate::model::{Asset, AssetKind, Id, Price, StoreData, TransactionKind};
 #[derive(Debug, Clone)]
 pub struct HoldingRow {
     pub portfolio_id: Id,
+    pub asset_id: Id,
     pub portfolio: String,
     pub symbol: String,
     pub name: String,
@@ -60,6 +61,7 @@ pub fn build_report(data: &StoreData) -> Report {
         let unrealized_pnl = value.zip(net_invested).map(|(v, i)| v - i);
         holdings.push(HoldingRow {
             portfolio_id,
+            asset_id,
             portfolio: portfolio_name(data, portfolio_id),
             symbol: asset.symbol.clone(),
             name: asset.name.clone(),

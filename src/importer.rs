@@ -22,9 +22,6 @@ const MORTGAGE_START_DATE: &str = "2013-01-01T00:00:00.000Z";
 const MORTGAGE_CURRENT_DATE: &str = "2026-05-30T00:00:00.000Z";
 const MORTGAGE_START_AMOUNT_EUR: Decimal = Decimal::from_parts(255000, 0, 0, false, 0);
 const MORTGAGE_CURRENT_AMOUNT_EUR: Decimal = Decimal::from_parts(110000, 0, 0, false, 0);
-const STOCKS_EUR_CASH_DATE: &str = "2026-05-30T00:00:00.000Z";
-const STOCKS_EUR_CASH_AMOUNT: Decimal = Decimal::from_parts(4942, 0, 0, false, 0);
-const STOCKS_EUR_CASH_SOURCE_ROW_HASH: &str = "manual-import:stocks-eur-cash-2026-05-30";
 const GME_SPLIT_DATE: &str = "2022-07-22";
 
 struct ImportedAsset {
@@ -96,7 +93,6 @@ pub fn import_delta_dir(store: &mut Store, dir: &Path) -> anyhow::Result<ImportS
         imported += summary.imported;
         skipped += summary.skipped;
     }
-    ensure_stocks_eur_cash_holding(store)?;
     ensure_gme_stock_split(store);
     rebuild_ledger(&mut store.data)?;
     Ok(ImportSummary { imported, skipped })
@@ -154,8 +150,7 @@ fn import_row(
     let (base_symbol, base_name) = split_delta_asset(&row.base_currency_name);
     let base_kind = asset_kind_from_delta(&row.base_type);
     let base_asset = normalize_imported_asset(&base_symbol, &base_name, base_kind, house_loan);
-    let posts_imported_fiat = imported_fiat_posts_to_ledger(source);
-    let base_ledger_effect = ledger_effect_for_imported_asset(base_kind, posts_imported_fiat);
+    let base_ledger_effect = base_ledger_effect_for_imported_asset(base_kind, kind, source);
     let base_asset_id = store.asset_id_with_metadata(
         &base_asset.symbol,
         &base_asset.name,
@@ -190,9 +185,7 @@ fn import_row(
         row.quote_currency
             .as_deref()
             .filter(|s| !s.is_empty())
-            .map(|symbol| {
-                ledger_effect_for_imported_asset(quote_asset_kind(symbol), posts_imported_fiat)
-            })
+            .map(|symbol| quote_ledger_effect_for_imported_asset(quote_asset_kind(symbol), source))
             .unwrap_or_default()
     };
     let fee_amount = row
@@ -266,12 +259,30 @@ fn is_house_property(source: &str, row: &DeltaRow) -> bool {
     portfolio_is_house(source) && row.way == "DEPOSIT"
 }
 
-fn imported_fiat_posts_to_ledger(source: &str) -> bool {
+fn imported_quote_fiat_posts_to_ledger(source: &str) -> bool {
     source.contains("delta_Fiat_") || source.contains("delta_House_")
 }
 
-fn ledger_effect_for_imported_asset(kind: AssetKind, posts_imported_fiat: bool) -> LedgerEffect {
-    if kind == AssetKind::Fiat && !posts_imported_fiat {
+fn base_ledger_effect_for_imported_asset(
+    kind: AssetKind,
+    transaction_kind: TransactionKind,
+    source: &str,
+) -> LedgerEffect {
+    if kind == AssetKind::Fiat
+        && !matches!(
+            transaction_kind,
+            TransactionKind::Deposit | TransactionKind::Withdraw
+        )
+        && !imported_quote_fiat_posts_to_ledger(source)
+    {
+        LedgerEffect::Ignore
+    } else {
+        LedgerEffect::Post
+    }
+}
+
+fn quote_ledger_effect_for_imported_asset(kind: AssetKind, source: &str) -> LedgerEffect {
+    if kind == AssetKind::Fiat && !imported_quote_fiat_posts_to_ledger(source) {
         LedgerEffect::Ignore
     } else {
         LedgerEffect::Post
@@ -419,33 +430,6 @@ fn import_house_loan(
             },
         );
     }
-    Ok(())
-}
-
-fn ensure_stocks_eur_cash_holding(store: &mut Store) -> anyhow::Result<()> {
-    if store
-        .data
-        .transactions
-        .iter()
-        .any(|transaction| transaction.source_row_hash == STOCKS_EUR_CASH_SOURCE_ROW_HASH)
-    {
-        return Ok(());
-    }
-    let portfolio_id = store.portfolio_id("Stocks");
-    let eur_asset_id = store.asset_id("EUR", "EUR", AssetKind::Fiat);
-    push_transaction(
-        store,
-        TransactionDraft {
-            portfolio_id,
-            timestamp: DateTime::parse_from_rfc3339(STOCKS_EUR_CASH_DATE)?.with_timezone(&Utc),
-            kind: TransactionKind::Deposit,
-            base_asset_id: eur_asset_id,
-            base_amount: STOCKS_EUR_CASH_AMOUNT,
-            source: "manual-import".into(),
-            source_row_hash: STOCKS_EUR_CASH_SOURCE_ROW_HASH.into(),
-            notes: Some("Stocks EUR cash holding".into()),
-        },
-    );
     Ok(())
 }
 

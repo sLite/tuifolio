@@ -35,7 +35,7 @@ fn imports_all_delta_rows_idempotently() {
     assert_eq!(first.skipped, 0);
     assert_eq!(second.imported, 0);
     assert_eq!(second.skipped, 148);
-    assert_eq!(store.data.transactions.len(), 151);
+    assert_eq!(store.data.transactions.len(), 150);
     assert!(!store.data.ledger_entries.is_empty());
 }
 
@@ -328,7 +328,7 @@ fn store_open_migrates_legacy_symbol_stock_splits() {
 }
 
 #[test]
-fn import_adds_stocks_eur_cash_holding() {
+fn imported_stocks_eur_deposit_posts_to_cash_holding() {
     let mut store = temp_store();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
     import_delta_dir(&mut store, &dir).unwrap();
@@ -339,7 +339,7 @@ fn import_adds_stocks_eur_cash_holding() {
         row.portfolio == "Stocks"
             && row.symbol == "EUR"
             && row.kind == AssetKind::Fiat
-            && row.quantity == Decimal::new(4942, 0)
+            && row.quantity == Decimal::new(4946, 0)
     }));
 }
 
