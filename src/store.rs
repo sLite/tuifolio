@@ -20,8 +20,9 @@ impl Store {
         }
         let content = fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let data = serde_json::from_str(&content)
+        let mut data: StoreData = serde_json::from_str(&content)
             .with_context(|| format!("failed to parse {}", path.display()))?;
+        migrate_legacy_stock_splits(&mut data);
         Ok(Self { path, data })
     }
 
@@ -111,4 +112,28 @@ impl Store {
 fn default_store_path() -> anyhow::Result<PathBuf> {
     let base = dirs::data_local_dir().context("could not determine local data directory")?;
     Ok(base.join("tuifolio").join("store.json"))
+}
+
+fn migrate_legacy_stock_splits(data: &mut StoreData) {
+    for split in &mut data.config.stock_splits {
+        if split.asset_id != 0 {
+            continue;
+        }
+        let Some(symbol) = split.legacy_symbol.as_deref() else {
+            continue;
+        };
+        let matches = data
+            .assets
+            .iter()
+            .filter(|asset| asset.symbol == symbol)
+            .collect::<Vec<_>>();
+        if matches.len() == 1 {
+            split.asset_id = matches[0].id;
+        } else {
+            tracing::warn!(
+                symbol,
+                "could not migrate legacy symbol-based stock split to an asset id"
+            );
+        }
+    }
 }

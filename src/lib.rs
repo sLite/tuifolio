@@ -1,4 +1,5 @@
 pub mod accounting;
+pub mod formatting;
 pub mod importer;
 pub mod ledger;
 pub mod model;

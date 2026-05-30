@@ -20,10 +20,10 @@ pub fn build_ledger(data: &StoreData) -> anyhow::Result<Vec<LedgerEntry>> {
         .collect::<HashMap<_, _>>();
     let mut entries = Vec::new();
     let mut transactions = data.transactions.iter().collect::<Vec<_>>();
-    transactions.sort_by_key(|transaction| transaction.id);
+    transactions.sort_by_key(|transaction| (transaction.timestamp, transaction.id));
 
     for transaction in transactions {
-        entries.extend(transaction_entries(transaction, &entries, &assets, data)?);
+        entries.extend(transaction_entries(transaction, &assets, data)?);
     }
 
     Ok(entries)
@@ -31,22 +31,24 @@ pub fn build_ledger(data: &StoreData) -> anyhow::Result<Vec<LedgerEntry>> {
 
 fn transaction_entries(
     transaction: &Transaction,
-    existing_entries: &[LedgerEntry],
     assets: &HashMap<Id, &Asset>,
     data: &StoreData,
 ) -> anyhow::Result<Vec<LedgerEntry>> {
     let mut entries = Vec::new();
-    let base_asset = assets.get(&transaction.base_asset_id).copied();
-    if let Some(asset) = base_asset
-        && transaction.base_ledger_effect == LedgerEffect::Post
-    {
+    if transaction.base_ledger_effect == LedgerEffect::Post {
+        let asset = require_asset(
+            assets,
+            transaction.base_asset_id,
+            transaction.id,
+            LedgerRole::Base,
+        )?;
         entries.push(LedgerEntry {
             transaction_id: transaction.id,
             portfolio_id: transaction.portfolio_id,
             asset_id: transaction.base_asset_id,
             quantity_delta: split_adjusted_amount(
                 data,
-                &asset.symbol,
+                asset.id,
                 transaction.timestamp,
                 transaction.base_amount,
             )? * base_sign(transaction.kind),
@@ -58,45 +60,28 @@ fn transaction_entries(
         && !quote_sign(transaction.kind).is_zero()
         && !amount.is_zero()
         && transaction.quote_ledger_effect == LedgerEffect::Post
-        && let Some(_asset) = assets.get(&asset_id).copied()
     {
-        let amount = match transaction.kind {
-            TransactionKind::Buy => {
-                spendable_amount(existing_entries, transaction.portfolio_id, asset_id, amount)
-            }
-            TransactionKind::Sell => amount,
-            TransactionKind::Deposit
-            | TransactionKind::Withdraw
-            | TransactionKind::AssetIncrease
-            | TransactionKind::AssetDecrease
-            | TransactionKind::LiabilityIncrease
-            | TransactionKind::LiabilityDecrease => Decimal::ZERO,
-        };
-        if !amount.is_zero() {
-            entries.push(LedgerEntry {
-                transaction_id: transaction.id,
-                portfolio_id: transaction.portfolio_id,
-                asset_id,
-                quantity_delta: amount * quote_sign(transaction.kind),
-                role: LedgerRole::Quote,
-            });
-        }
+        require_asset(assets, asset_id, transaction.id, LedgerRole::Quote)?;
+        entries.push(LedgerEntry {
+            transaction_id: transaction.id,
+            portfolio_id: transaction.portfolio_id,
+            asset_id,
+            quantity_delta: amount * quote_sign(transaction.kind),
+            role: LedgerRole::Quote,
+        });
     }
 
     if let (Some(asset_id), Some(amount)) = (transaction.fee_asset_id, transaction.fee_amount)
         && !amount.is_zero()
-        && let Some(_asset) = assets.get(&asset_id).copied()
     {
-        let amount = spendable_amount(existing_entries, transaction.portfolio_id, asset_id, amount);
-        if !amount.is_zero() {
-            entries.push(LedgerEntry {
-                transaction_id: transaction.id,
-                portfolio_id: transaction.portfolio_id,
-                asset_id,
-                quantity_delta: -amount,
-                role: LedgerRole::Fee,
-            });
-        }
+        require_asset(assets, asset_id, transaction.id, LedgerRole::Fee)?;
+        entries.push(LedgerEntry {
+            transaction_id: transaction.id,
+            portfolio_id: transaction.portfolio_id,
+            asset_id,
+            quantity_delta: -amount,
+            role: LedgerRole::Fee,
+        });
     }
 
     Ok(entries)
@@ -128,34 +113,16 @@ fn quote_sign(kind: TransactionKind) -> Decimal {
     }
 }
 
-fn spendable_amount(
-    entries: &[LedgerEntry],
-    portfolio_id: Id,
-    asset_id: Id,
-    requested: Decimal,
-) -> Decimal {
-    let balance = entries
-        .iter()
-        .filter(|entry| entry.portfolio_id == portfolio_id && entry.asset_id == asset_id)
-        .map(|entry| entry.quantity_delta)
-        .sum::<Decimal>();
-    if balance <= Decimal::ZERO {
-        Decimal::ZERO
-    } else {
-        requested.min(balance)
-    }
-}
-
 fn split_adjusted_amount(
     data: &StoreData,
-    symbol: &str,
+    asset_id: Id,
     timestamp: DateTime<Utc>,
     amount: Decimal,
 ) -> anyhow::Result<Decimal> {
     let mut adjusted = amount;
     let transaction_date = timestamp.date_naive();
     for split in &data.config.stock_splits {
-        if split.symbol != symbol {
+        if split.asset_id != asset_id {
             continue;
         }
         let effective_date = NaiveDate::parse_from_str(&split.effective_date, "%Y-%m-%d")?;
@@ -164,4 +131,15 @@ fn split_adjusted_amount(
         }
     }
     Ok(adjusted)
+}
+
+fn require_asset<'a>(
+    assets: &'a HashMap<Id, &Asset>,
+    asset_id: Id,
+    transaction_id: Id,
+    role: LedgerRole,
+) -> anyhow::Result<&'a Asset> {
+    assets.get(&asset_id).copied().ok_or_else(|| {
+        anyhow::anyhow!("transaction {transaction_id} references missing {role:?} asset {asset_id}")
+    })
 }

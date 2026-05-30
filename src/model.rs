@@ -18,19 +18,6 @@ pub enum AssetKind {
     Liability,
 }
 
-impl AssetKind {
-    pub fn from_delta(value: &str) -> Self {
-        match value {
-            "FIAT" => Self::Fiat,
-            "CRYPTO" => Self::Crypto,
-            "STOCK" => Self::Stock,
-            "FUND" => Self::Fund,
-            "COMMODITY" => Self::Commodity,
-            _ => Self::Custom,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionKind {
     Buy,
@@ -41,18 +28,6 @@ pub enum TransactionKind {
     AssetDecrease,
     LiabilityIncrease,
     LiabilityDecrease,
-}
-
-impl TransactionKind {
-    pub fn from_delta(value: &str) -> anyhow::Result<Self> {
-        match value {
-            "BUY" => Ok(Self::Buy),
-            "SELL" => Ok(Self::Sell),
-            "DEPOSIT" => Ok(Self::Deposit),
-            "WITHDRAW" => Ok(Self::Withdraw),
-            other => anyhow::bail!("unsupported Delta transaction kind: {other}"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,13 +113,16 @@ pub struct Config {
     pub base_currencies: Vec<String>,
     pub default_base_currency: String,
     pub selected_base_currency: String,
-    #[serde(default = "default_stock_splits")]
+    #[serde(default)]
     pub stock_splits: Vec<StockSplit>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StockSplit {
-    pub symbol: String,
+    #[serde(default)]
+    pub asset_id: Id,
+    #[serde(default, rename = "symbol", skip_serializing)]
+    pub legacy_symbol: Option<String>,
     pub effective_date: String,
     #[serde(with = "rust_decimal::serde::str")]
     pub numerator: Decimal,
@@ -158,18 +136,9 @@ impl Default for Config {
             base_currencies: vec!["EUR".into(), "USD".into(), "BTC".into(), "ETH".into()],
             default_base_currency: "EUR".into(),
             selected_base_currency: "EUR".into(),
-            stock_splits: default_stock_splits(),
+            stock_splits: Vec::new(),
         }
     }
-}
-
-fn default_stock_splits() -> Vec<StockSplit> {
-    vec![StockSplit {
-        symbol: "GME".into(),
-        effective_date: "2022-07-22".into(),
-        numerator: Decimal::new(4, 0),
-        denominator: Decimal::ONE,
-    }]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,18 +173,5 @@ impl StoreData {
         let id = self.next_id;
         self.next_id += 1;
         id
-    }
-}
-
-pub fn split_delta_asset(label: &str) -> (String, String) {
-    let trimmed = label.trim();
-    if let Some((symbol, rest)) = trimmed.split_once(" (") {
-        let name = rest.strip_suffix(')').unwrap_or(rest);
-        (
-            symbol.trim().trim_end_matches('*').to_string(),
-            name.to_string(),
-        )
-    } else {
-        (trimmed.to_string(), trimmed.to_string())
     }
 }

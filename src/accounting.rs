@@ -7,6 +7,7 @@ use crate::model::{Asset, AssetKind, Id, Price, StoreData, TransactionKind};
 
 #[derive(Debug, Clone)]
 pub struct HoldingRow {
+    pub portfolio_id: Id,
     pub portfolio: String,
     pub symbol: String,
     pub name: String,
@@ -20,11 +21,11 @@ pub struct HoldingRow {
 
 #[derive(Debug, Clone)]
 pub struct PortfolioRow {
+    pub id: Id,
     pub name: String,
     pub assets: Decimal,
     pub liabilities: Decimal,
     pub net_value: Decimal,
-    pub value: Decimal,
     pub unresolved: usize,
 }
 
@@ -34,7 +35,6 @@ pub struct Report {
     pub total_assets: Decimal,
     pub total_liabilities: Decimal,
     pub net_value: Decimal,
-    pub total_value: Decimal,
     pub total_unrealized_pnl: Decimal,
     pub portfolios: Vec<PortfolioRow>,
     pub holdings: Vec<HoldingRow>,
@@ -56,16 +56,10 @@ pub fn build_report(data: &StoreData) -> Report {
             continue;
         };
         let value = value_in_base(asset, quantity, &base, &latest_prices, &asset_map);
-        let net_invested = net_invested(
-            data,
-            portfolio_id,
-            asset_id,
-            &base,
-            &latest_prices,
-            &asset_map,
-        );
+        let net_invested = net_invested(data, portfolio_id, asset_id, &base, &asset_map);
         let unrealized_pnl = value.zip(net_invested).map(|(v, i)| v - i);
         holdings.push(HoldingRow {
+            portfolio_id,
             portfolio: portfolio_name(data, portfolio_id),
             symbol: asset.symbol.clone(),
             name: asset.name.clone(),
@@ -83,7 +77,6 @@ pub fn build_report(data: &StoreData) -> Report {
     let total_assets = portfolios.iter().map(|p| p.assets).sum();
     let total_liabilities = portfolios.iter().map(|p| p.liabilities).sum();
     let net_value = total_assets - total_liabilities;
-    let total_value = net_value;
     let total_unrealized_pnl = holdings.iter().filter_map(|h| h.unrealized_pnl).sum();
     let negative_balances = holdings
         .iter()
@@ -96,7 +89,6 @@ pub fn build_report(data: &StoreData) -> Report {
         total_assets,
         total_liabilities,
         net_value,
-        total_value,
         total_unrealized_pnl,
         portfolios,
         holdings,
@@ -121,6 +113,25 @@ fn balances(data: &StoreData) -> BTreeMap<(Id, Id), Decimal> {
 fn latest_prices(data: &StoreData) -> HashMap<(Id, String), &Price> {
     let mut prices = HashMap::new();
     for price in &data.prices {
+        let key = (price.asset_id, price.currency.clone());
+        let should_replace = prices
+            .get(&key)
+            .map(|current: &&Price| current.timestamp < price.timestamp)
+            .unwrap_or(true);
+        if should_replace {
+            prices.insert(key, price);
+        }
+    }
+    prices
+}
+
+fn prices_at(data: &StoreData, timestamp: DateTime<Utc>) -> HashMap<(Id, String), &Price> {
+    let mut prices = HashMap::new();
+    for price in data
+        .prices
+        .iter()
+        .filter(|price| price.timestamp <= timestamp)
+    {
         let key = (price.asset_id, price.currency.clone());
         let should_replace = prices
             .get(&key)
@@ -237,7 +248,6 @@ fn net_invested(
     portfolio_id: Id,
     asset_id: Id,
     base: &str,
-    prices: &HashMap<(Id, String), &Price>,
     assets: &HashMap<Id, &Asset>,
 ) -> Option<Decimal> {
     let mut invested = Decimal::ZERO;
@@ -250,7 +260,10 @@ fn net_invested(
             continue;
         };
         let quote_asset = assets.get(&quote_asset_id)?;
-        let rate = conversion_rate(&quote_asset.symbol, base, prices, assets)?;
+        let historical_prices = prices_at(data, transaction.timestamp);
+        let latest_prices = latest_prices(data);
+        let rate = conversion_rate(&quote_asset.symbol, base, &historical_prices, assets)
+            .or_else(|| conversion_rate(&quote_asset.symbol, base, &latest_prices, assets))?;
         let Some(quote_amount) = transaction.quote_amount else {
             continue;
         };
@@ -275,7 +288,7 @@ fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow
         .map(|portfolio| {
             let rows = holdings
                 .iter()
-                .filter(|holding| holding.portfolio == portfolio.name);
+                .filter(|holding| holding.portfolio_id == portfolio.id);
             let assets = rows
                 .clone()
                 .filter(|holding| holding.kind != AssetKind::Liability)
@@ -289,11 +302,11 @@ fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow
             let net_value = assets - liabilities;
             let unresolved = rows.filter(|h| h.stale_price).count();
             PortfolioRow {
+                id: portfolio.id,
                 name: portfolio.name.clone(),
                 assets,
                 liabilities,
                 net_value,
-                value: net_value,
                 unresolved,
             }
         })

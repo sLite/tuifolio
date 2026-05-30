@@ -3,9 +3,9 @@ use std::path::Path;
 use rust_decimal::Decimal;
 use tuifolio::{
     accounting::build_report,
-    importer::import_delta_dir,
+    importer::{import_delta_dir, import_delta_file, split_delta_asset},
     ledger::rebuild_ledger,
-    model::{AssetKind, LedgerEffect, Transaction, TransactionKind, split_delta_asset},
+    model::{AssetKind, LedgerEffect, StockSplit, Transaction, TransactionKind},
     price_sync::add_manual_price,
     store::Store,
 };
@@ -253,6 +253,81 @@ fn stock_splits_adjust_imported_share_balances() {
 }
 
 #[test]
+fn stock_splits_adjust_single_file_imports() {
+    let mut store = temp_store();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("delta-exports")
+        .join("delta_Stocks_18122025.csv");
+    import_delta_file(&mut store, &path).unwrap();
+
+    let gme_id = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.symbol == "GME")
+        .unwrap()
+        .id;
+    let stocks_id = store
+        .data
+        .portfolios
+        .iter()
+        .find(|portfolio| portfolio.name == "Stocks")
+        .unwrap()
+        .id;
+    let balance = store
+        .data
+        .ledger_entries
+        .iter()
+        .filter(|entry| entry.portfolio_id == stocks_id && entry.asset_id == gme_id)
+        .map(|entry| entry.quantity_delta)
+        .sum::<Decimal>();
+
+    assert_eq!(balance, Decimal::new(81, 0));
+}
+
+#[test]
+fn store_open_migrates_legacy_symbol_stock_splits() {
+    let path = std::env::temp_dir().join(format!(
+        "tuifolio-legacy-split-test-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"{
+  "config": {
+    "base_currencies": ["EUR"],
+    "default_base_currency": "EUR",
+    "selected_base_currency": "EUR",
+    "stock_splits": [{
+      "symbol": "GME",
+      "effective_date": "2022-07-22",
+      "numerator": "4",
+      "denominator": "1"
+    }]
+  },
+  "next_id": 2,
+  "portfolios": [],
+  "assets": [{
+    "id": 1,
+    "symbol": "GME",
+    "name": "GameStop",
+    "kind": "Stock"
+  }],
+  "transactions": [],
+  "ledger_entries": [],
+  "prices": [],
+  "raw_rows": {}
+}"#,
+    )
+    .unwrap();
+
+    let store = Store::open(Some(path.clone())).unwrap();
+    let _ = std::fs::remove_file(path);
+
+    assert_eq!(store.data.config.stock_splits[0].asset_id, 1);
+}
+
+#[test]
 fn import_adds_stocks_eur_cash_holding() {
     let mut store = temp_store();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
@@ -329,6 +404,128 @@ fn manual_cost_only_quote_amount_does_not_create_cash_holding() {
             .iter()
             .any(|row| row.symbol == "USD" && row.portfolio == "Crypto")
     );
+}
+
+#[test]
+fn ledger_posts_quote_amounts_even_when_cash_goes_negative() {
+    let mut store = temp_store();
+    let portfolio_id = store.portfolio_id("Manual");
+    let stock_id = store.asset_id("ABC", "ABC", AssetKind::Stock);
+    let usd_id = store.asset_id("USD", "USD", AssetKind::Fiat);
+    let transaction_id = store.data.allocate_id();
+
+    store.data.transactions.push(Transaction {
+        id: transaction_id,
+        portfolio_id,
+        timestamp: chrono::Utc::now(),
+        kind: TransactionKind::Buy,
+        base_asset_id: stock_id,
+        base_amount: Decimal::ONE,
+        base_ledger_effect: LedgerEffect::Post,
+        quote_asset_id: Some(usd_id),
+        quote_amount: Some(Decimal::new(100, 0)),
+        quote_ledger_effect: LedgerEffect::Post,
+        fee_asset_id: None,
+        fee_amount: None,
+        exchange: None,
+        broker: None,
+        notes: None,
+        source: "manual".into(),
+        source_row_hash: String::new(),
+    });
+    rebuild_ledger(&mut store.data).unwrap();
+
+    let usd_balance = store
+        .data
+        .ledger_entries
+        .iter()
+        .filter(|entry| entry.portfolio_id == portfolio_id && entry.asset_id == usd_id)
+        .map(|entry| entry.quantity_delta)
+        .sum::<Decimal>();
+
+    assert_eq!(usd_balance, Decimal::new(-100, 0));
+}
+
+#[test]
+fn explicit_split_events_adjust_only_the_target_asset() {
+    let mut store = temp_store();
+    let portfolio_id = store.portfolio_id("Manual");
+    let split_asset_id = store.asset_id("ABC", "ABC", AssetKind::Stock);
+    let other_asset_id = store.asset_id("XYZ", "XYZ", AssetKind::Stock);
+    store.data.config.stock_splits.push(StockSplit {
+        asset_id: split_asset_id,
+        legacy_symbol: None,
+        effective_date: "2024-01-01".into(),
+        numerator: Decimal::new(2, 0),
+        denominator: Decimal::ONE,
+    });
+    for asset_id in [split_asset_id, other_asset_id] {
+        let transaction_id = store.data.allocate_id();
+        store.data.transactions.push(Transaction {
+            id: transaction_id,
+            portfolio_id,
+            timestamp: chrono::DateTime::parse_from_rfc3339("2023-01-01T00:00:00.000Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+            kind: TransactionKind::Deposit,
+            base_asset_id: asset_id,
+            base_amount: Decimal::new(10, 0),
+            base_ledger_effect: LedgerEffect::Post,
+            quote_asset_id: None,
+            quote_amount: None,
+            quote_ledger_effect: LedgerEffect::Post,
+            fee_asset_id: None,
+            fee_amount: None,
+            exchange: None,
+            broker: None,
+            notes: None,
+            source: "manual".into(),
+            source_row_hash: format!("manual:{asset_id}"),
+        });
+    }
+    rebuild_ledger(&mut store.data).unwrap();
+
+    let balance = |asset_id| {
+        store
+            .data
+            .ledger_entries
+            .iter()
+            .filter(|entry| entry.portfolio_id == portfolio_id && entry.asset_id == asset_id)
+            .map(|entry| entry.quantity_delta)
+            .sum::<Decimal>()
+    };
+
+    assert_eq!(balance(split_asset_id), Decimal::new(20, 0));
+    assert_eq!(balance(other_asset_id), Decimal::new(10, 0));
+}
+
+#[test]
+fn ledger_rebuild_fails_on_missing_posted_asset() {
+    let mut store = temp_store();
+    let portfolio_id = store.portfolio_id("Manual");
+    let transaction_id = store.data.allocate_id();
+
+    store.data.transactions.push(Transaction {
+        id: transaction_id,
+        portfolio_id,
+        timestamp: chrono::Utc::now(),
+        kind: TransactionKind::Deposit,
+        base_asset_id: 999,
+        base_amount: Decimal::ONE,
+        base_ledger_effect: LedgerEffect::Post,
+        quote_asset_id: None,
+        quote_amount: None,
+        quote_ledger_effect: LedgerEffect::Post,
+        fee_asset_id: None,
+        fee_amount: None,
+        exchange: None,
+        broker: None,
+        notes: None,
+        source: "manual".into(),
+        source_row_hash: String::new(),
+    });
+
+    assert!(rebuild_ledger(&mut store.data).is_err());
 }
 
 fn temp_store() -> Store {

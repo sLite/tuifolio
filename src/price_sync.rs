@@ -1,4 +1,3 @@
-use anyhow::Context;
 use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -62,10 +61,18 @@ pub fn add_manual_price(
     price: Decimal,
     currency: &str,
 ) -> anyhow::Result<()> {
-    let asset_id = store
-        .asset_by_symbol(symbol)
-        .with_context(|| format!("unknown asset symbol: {symbol}"))?
-        .id;
+    let matches = store
+        .data
+        .assets
+        .iter()
+        .filter(|asset| asset.symbol == symbol)
+        .collect::<Vec<_>>();
+    anyhow::ensure!(!matches.is_empty(), "unknown asset symbol: {symbol}");
+    anyhow::ensure!(
+        matches.len() == 1,
+        "ambiguous asset symbol: {symbol}; use a unique symbol before adding prices"
+    );
+    let asset_id = matches[0].id;
     store.data.prices.push(Price {
         asset_id,
         timestamp: now(),
@@ -131,7 +138,7 @@ fn yahoo_conversion_rate(
     if from == to {
         return Ok(Some(Decimal::ONE));
     }
-    if is_fiat(from) && is_fiat(to) {
+    if is_fiat(from, assets) && is_fiat(to, assets) {
         return fetch_yahoo_price(client, &format!("{from}{to}=X"))
             .map(|quote| quote.map(|(price, _)| price));
     }
@@ -189,8 +196,10 @@ fn yahoo_market_symbol(asset: &Asset) -> &str {
     asset.yahoo_symbol.as_deref().unwrap_or(&asset.symbol)
 }
 
-fn is_fiat(symbol: &str) -> bool {
-    matches!(symbol, "EUR" | "USD" | "CHF" | "GBP")
+fn is_fiat(symbol: &str, assets: &[Asset]) -> bool {
+    assets
+        .iter()
+        .any(|asset| asset.symbol == symbol && asset.kind == AssetKind::Fiat)
 }
 
 fn needs_price(asset: &Asset) -> bool {

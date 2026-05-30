@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use rust_decimal::Decimal;
 
 use tuifolio::accounting::build_report;
+use tuifolio::formatting::money;
 use tuifolio::importer::import_delta_dir;
 use tuifolio::price_sync::{add_manual_price, sync_free_crypto_prices};
 use tuifolio::store::Store;
@@ -90,19 +91,19 @@ fn tui_command(store: &mut Store) -> anyhow::Result<()> {
 fn summary_command(store: &Store) {
     let report = build_report(&store.data);
     println!("Base: {}", report.base_currency);
-    println!("Assets: {}", fixed_2(report.total_assets));
-    println!("Liabilities: {}", fixed_2(report.total_liabilities));
-    println!("Net worth: {}", fixed_2(report.net_value));
-    println!("Unrealized PnL: {}", fixed_2(report.total_unrealized_pnl));
+    println!("Assets: {}", money(report.total_assets));
+    println!("Liabilities: {}", money(report.total_liabilities));
+    println!("Net worth: {}", money(report.net_value));
+    println!("Unrealized PnL: {}", money(report.total_unrealized_pnl));
     println!("Holdings: {}", report.holdings.len());
     println!("Negative balances: {}", report.negative_balances.len());
     for portfolio in report.portfolios {
         println!(
             "{}: assets={} liabilities={} net={} missing={}",
             portfolio.name,
-            fixed_2(portfolio.assets),
-            fixed_2(portfolio.liabilities),
-            fixed_2(portfolio.net_value),
+            money(portfolio.assets),
+            money(portfolio.liabilities),
+            money(portfolio.net_value),
             portfolio.unresolved
         );
     }
@@ -130,7 +131,7 @@ fn holding_command(store: &Store, symbol: &str) {
             holding.portfolio,
             holding.symbol,
             holding.quantity,
-            holding.value.map(fixed_2).unwrap_or_else(|| "n/a".into()),
+            holding.value.map(money).unwrap_or_else(|| "n/a".into()),
             report.base_currency
         );
     }
@@ -166,8 +167,4 @@ fn base_command(store: &mut Store, currency: String) -> anyhow::Result<()> {
     store.save()?;
     println!("selected base currency: {currency}");
     Ok(())
-}
-
-fn fixed_2(value: Decimal) -> String {
-    format!("{:.2}", value.round_dp(2))
 }

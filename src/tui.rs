@@ -16,6 +16,7 @@ use ratatui::{
 
 use crate::{
     accounting::{Report, build_report},
+    formatting::{money, quantity as format_quantity},
     model::StoreData,
 };
 
@@ -180,11 +181,11 @@ fn render_portfolios(
 ) {
     let [portfolio_area, holdings_area] =
         Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
-    let selected_name = report
+    let selected_portfolio = report
         .portfolios
         .get(state.selected_portfolio)
-        .map(|portfolio| portfolio.name.as_str())
-        .unwrap_or_default();
+        .map(|portfolio| (portfolio.id, portfolio.name.as_str()));
+    let selected_name = selected_portfolio.map(|(_, name)| name).unwrap_or_default();
 
     let portfolio_visible_rows = table_visible_rows(portfolio_area);
     let portfolio_offset = scroll_offset(
@@ -208,7 +209,7 @@ fn render_portfolios(
                 Cell::from(portfolio.name.clone()),
                 Cell::from(money(portfolio.assets)),
                 Cell::from(negative_money(portfolio.liabilities)),
-                Cell::from(money(portfolio.value)),
+                Cell::from(money(portfolio.net_value)),
                 Cell::from(portfolio.unresolved.to_string()),
             ])
             .style(style)
@@ -224,7 +225,11 @@ fn render_portfolios(
     let selected_holdings = report
         .holdings
         .iter()
-        .filter(|holding| holding.portfolio == selected_name)
+        .filter(|holding| {
+            selected_portfolio
+                .map(|(id, _)| holding.portfolio_id == id)
+                .unwrap_or(false)
+        })
         .collect::<Vec<_>>();
     let holding_visible_rows = table_visible_rows(holdings_area);
     let holding_offset = scroll_offset(
@@ -492,15 +497,14 @@ fn select_next_row(state: &mut AppState, report: &Report) {
 }
 
 fn selected_portfolio_holding_count(state: &AppState, report: &Report) -> usize {
-    let selected_name = report
+    let selected_id = report
         .portfolios
         .get(state.selected_portfolio)
-        .map(|portfolio| portfolio.name.as_str())
-        .unwrap_or_default();
+        .map(|portfolio| portfolio.id);
     report
         .holdings
         .iter()
-        .filter(|holding| holding.portfolio == selected_name)
+        .filter(|holding| selected_id == Some(holding.portfolio_id))
         .count()
 }
 
@@ -527,14 +531,6 @@ fn scroll_offset(selected: usize, len: usize, visible_rows: usize) -> usize {
         .min(len - visible_rows)
 }
 
-fn money(value: rust_decimal::Decimal) -> String {
-    fixed_2(value)
-}
-
-fn fixed_2(value: rust_decimal::Decimal) -> String {
-    format!("{:.2}", value.round_dp(2))
-}
-
 fn negative_money(value: rust_decimal::Decimal) -> String {
     if value.is_zero() {
         return money(value);
@@ -548,7 +544,7 @@ fn display_quantity(holding: &crate::accounting::HoldingRow) -> String {
     } else {
         holding.quantity
     };
-    quantity.round_dp(6).to_string()
+    format_quantity(quantity)
 }
 
 fn display_value(holding: &crate::accounting::HoldingRow) -> String {
@@ -575,7 +571,7 @@ fn pnl_cell(holding: &crate::accounting::HoldingRow, selected: bool) -> Cell<'st
         return Cell::from("n/a");
     };
     let text = if let Some(percent) = unrealized_pnl_percent(holding) {
-        format!("{} ({}%)", money(pnl), fixed_2(percent))
+        format!("{} ({}%)", money(pnl), money(percent))
     } else {
         money(pnl)
     };

@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::{
     ledger::rebuild_ledger,
-    model::{AssetKind, LedgerEffect, Transaction, TransactionKind, split_delta_asset},
+    model::{AssetKind, LedgerEffect, StockSplit, Transaction, TransactionKind},
     store::Store,
 };
 
@@ -25,6 +25,7 @@ const MORTGAGE_CURRENT_AMOUNT_EUR: Decimal = Decimal::from_parts(110000, 0, 0, f
 const STOCKS_EUR_CASH_DATE: &str = "2026-05-30T00:00:00.000Z";
 const STOCKS_EUR_CASH_AMOUNT: Decimal = Decimal::from_parts(4942, 0, 0, false, 0);
 const STOCKS_EUR_CASH_SOURCE_ROW_HASH: &str = "manual-import:stocks-eur-cash-2026-05-30";
+const GME_SPLIT_DATE: &str = "2022-07-22";
 
 struct ImportedAsset {
     symbol: String,
@@ -96,6 +97,7 @@ pub fn import_delta_dir(store: &mut Store, dir: &Path) -> anyhow::Result<ImportS
         skipped += summary.skipped;
     }
     ensure_stocks_eur_cash_holding(store)?;
+    ensure_gme_stock_split(store);
     rebuild_ledger(&mut store.data)?;
     Ok(ImportSummary { imported, skipped })
 }
@@ -127,6 +129,7 @@ pub fn import_delta_file(store: &mut Store, path: &Path) -> anyhow::Result<Impor
         imported += 1;
     }
 
+    ensure_gme_stock_split(store);
     rebuild_ledger(&mut store.data)?;
     Ok(ImportSummary { imported, skipped })
 }
@@ -145,11 +148,11 @@ fn import_row(
     if house_loan {
         return import_house_loan(store, portfolio_id, source, source_row_hash);
     }
-    let kind = TransactionKind::from_delta(&row.way)?;
+    let kind = transaction_kind_from_delta(&row.way)?;
     let timestamp = DateTime::parse_from_rfc3339(&row.date)?.with_timezone(&Utc);
     let base_amount = parse_decimal(&row.base_amount)?;
     let (base_symbol, base_name) = split_delta_asset(&row.base_currency_name);
-    let base_kind = AssetKind::from_delta(&row.base_type);
+    let base_kind = asset_kind_from_delta(&row.base_type);
     let base_asset = normalize_imported_asset(&base_symbol, &base_name, base_kind, house_loan);
     let posts_imported_fiat = imported_fiat_posts_to_ledger(source);
     let base_ledger_effect = ledger_effect_for_imported_asset(base_kind, posts_imported_fiat);
@@ -203,7 +206,7 @@ fn import_row(
         .filter(|s| !s.is_empty())
         .map(|label| {
             let (symbol, name) = split_delta_asset(label);
-            let kind = AssetKind::from_delta(&row.base_type);
+            let kind = asset_kind_from_delta(&row.base_type);
             let asset = normalize_imported_asset(&symbol, &name, kind, false);
             store.asset_id_with_metadata(
                 &asset.symbol,
@@ -446,6 +449,33 @@ fn ensure_stocks_eur_cash_holding(store: &mut Store) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn ensure_gme_stock_split(store: &mut Store) {
+    let Some(asset) = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.symbol == "GME" && asset.kind == AssetKind::Stock)
+    else {
+        return;
+    };
+    if store
+        .data
+        .config
+        .stock_splits
+        .iter()
+        .any(|split| split.asset_id == asset.id && split.effective_date == GME_SPLIT_DATE)
+    {
+        return;
+    }
+    store.data.config.stock_splits.push(StockSplit {
+        asset_id: asset.id,
+        legacy_symbol: None,
+        effective_date: GME_SPLIT_DATE.into(),
+        numerator: Decimal::new(4, 0),
+        denominator: Decimal::ONE,
+    });
+}
+
 fn push_transaction(store: &mut Store, draft: TransactionDraft) {
     let transaction_id = store.data.allocate_id();
     store.data.transactions.push(Transaction {
@@ -501,5 +531,39 @@ fn quote_asset_kind(symbol: &str) -> AssetKind {
     match symbol {
         "EUR" | "USD" | "CHF" | "GBP" => AssetKind::Fiat,
         _ => AssetKind::Crypto,
+    }
+}
+
+fn asset_kind_from_delta(value: &str) -> AssetKind {
+    match value {
+        "FIAT" => AssetKind::Fiat,
+        "CRYPTO" => AssetKind::Crypto,
+        "STOCK" => AssetKind::Stock,
+        "FUND" => AssetKind::Fund,
+        "COMMODITY" => AssetKind::Commodity,
+        _ => AssetKind::Custom,
+    }
+}
+
+fn transaction_kind_from_delta(value: &str) -> anyhow::Result<TransactionKind> {
+    match value {
+        "BUY" => Ok(TransactionKind::Buy),
+        "SELL" => Ok(TransactionKind::Sell),
+        "DEPOSIT" => Ok(TransactionKind::Deposit),
+        "WITHDRAW" => Ok(TransactionKind::Withdraw),
+        other => anyhow::bail!("unsupported Delta transaction kind: {other}"),
+    }
+}
+
+pub fn split_delta_asset(label: &str) -> (String, String) {
+    let trimmed = label.trim();
+    if let Some((symbol, rest)) = trimmed.split_once(" (") {
+        let name = rest.strip_suffix(')').unwrap_or(rest);
+        (
+            symbol.trim().trim_end_matches('*').to_string(),
+            name.to_string(),
+        )
+    } else {
+        (trimmed.to_string(), trimmed.to_string())
     }
 }
