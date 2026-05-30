@@ -21,6 +21,9 @@ pub struct HoldingRow {
 #[derive(Debug, Clone)]
 pub struct PortfolioRow {
     pub name: String,
+    pub assets: Decimal,
+    pub liabilities: Decimal,
+    pub net_value: Decimal,
     pub value: Decimal,
     pub unresolved: usize,
 }
@@ -28,6 +31,9 @@ pub struct PortfolioRow {
 #[derive(Debug, Clone)]
 pub struct Report {
     pub base_currency: String,
+    pub total_assets: Decimal,
+    pub total_liabilities: Decimal,
+    pub net_value: Decimal,
     pub total_value: Decimal,
     pub total_unrealized_pnl: Decimal,
     pub portfolios: Vec<PortfolioRow>,
@@ -74,16 +80,22 @@ pub fn build_report(data: &StoreData) -> Report {
 
     holdings.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.symbol.cmp(&b.symbol)));
     let portfolios = portfolio_rows(data, &holdings);
-    let total_value = portfolios.iter().map(|p| p.value).sum();
+    let total_assets = portfolios.iter().map(|p| p.assets).sum();
+    let total_liabilities = portfolios.iter().map(|p| p.liabilities).sum();
+    let net_value = total_assets - total_liabilities;
+    let total_value = net_value;
     let total_unrealized_pnl = holdings.iter().filter_map(|h| h.unrealized_pnl).sum();
     let negative_balances = holdings
         .iter()
-        .filter(|h| h.quantity < Decimal::ZERO)
+        .filter(|h| h.kind != AssetKind::Liability && h.quantity < Decimal::ZERO)
         .cloned()
         .collect();
 
     Report {
         base_currency: base,
+        total_assets,
+        total_liabilities,
+        net_value,
         total_value,
         total_unrealized_pnl,
         portfolios,
@@ -130,6 +142,10 @@ fn value_in_base(
 ) -> Option<Decimal> {
     if asset.symbol == base {
         return Some(quantity);
+    }
+    if let Some(currency) = &asset.valuation_currency {
+        let rate = conversion_rate(currency, base, prices, assets)?;
+        return Some(quantity * rate);
     }
     let price = price_for_asset(asset.id, base, prices)?;
     let rate = conversion_rate(&price.currency, base, prices, assets)?;
@@ -241,7 +257,10 @@ fn net_invested(
         match transaction.kind {
             TransactionKind::Buy => invested += quote_amount * rate,
             TransactionKind::Sell => invested -= quote_amount * rate,
-            TransactionKind::Deposit | TransactionKind::Withdraw => {}
+            TransactionKind::Deposit
+            | TransactionKind::Withdraw
+            | TransactionKind::LiabilityIncrease
+            | TransactionKind::LiabilityDecrease => {}
         }
         seen = true;
     }
@@ -252,12 +271,27 @@ fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow
     data.portfolios
         .iter()
         .map(|portfolio| {
-            let rows = holdings.iter().filter(|h| h.portfolio == portfolio.name);
-            let value = rows.clone().filter_map(|h| h.value).sum();
+            let rows = holdings
+                .iter()
+                .filter(|holding| holding.portfolio == portfolio.name);
+            let assets = rows
+                .clone()
+                .filter(|holding| holding.kind != AssetKind::Liability)
+                .filter_map(|holding| holding.value)
+                .sum();
+            let liabilities = rows
+                .clone()
+                .filter(|holding| holding.kind == AssetKind::Liability)
+                .filter_map(|holding| holding.value)
+                .sum();
+            let net_value = assets - liabilities;
             let unresolved = rows.filter(|h| h.stale_price).count();
             PortfolioRow {
                 name: portfolio.name.clone(),
-                value,
+                assets,
+                liabilities,
+                net_value,
+                value: net_value,
                 unresolved,
             }
         })
@@ -273,7 +307,7 @@ fn portfolio_name(data: &StoreData, id: Id) -> String {
 }
 
 fn is_cash_like(asset: &Asset, base: &str) -> bool {
-    asset.kind == AssetKind::Fiat || asset.symbol == base
+    asset.kind == AssetKind::Fiat || asset.kind == AssetKind::Liability || asset.symbol == base
 }
 
 pub fn now() -> DateTime<Utc> {

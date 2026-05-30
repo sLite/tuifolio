@@ -7,12 +7,12 @@ Local-first Delta-style portfolio tracker for the terminal.
 - Imports Delta CSV exports from `delta-exports/`.
 - Stores a ledger-first datastore as JSON at the platform data directory by default.
 - Tracks portfolios, assets, transactions, ledger entries, prices, and raw imported rows.
-- Models buys/sells as double-entry asset movements. Transactions explicitly control whether base and quote sides affect ledger balances.
+- Models buys/sells as d11ouble-entry asset movements. Transactions explicitly control whether base and quote sides affect ledger balances.
 - Supports fiat and crypto base currencies with fast switching in the TUI.
-- Imports house/debt as asset plus liability instead of flattening it into one value.
+- Imports house/debt as an asset plus a named mortgage liability instead of flattening it into one value.
 - Provides Yahoo-based quote sync for crypto, stocks/funds, fiat FX, and commodities through per-asset Yahoo symbols, plus manual price entry for unsupported assets.
 - Applies configured stock splits during import, including GME's 2022 4:1 split by default.
-- Shows portfolio value, holdings, missing prices, negative balances, and derived PnL.
+- Shows assets, liabilities, net worth, holdings, missing prices, negative balances, and derived PnL.
 
 ## Commands
 

@@ -65,7 +65,10 @@ fn transaction_entries(
                 spendable_amount(existing_entries, transaction.portfolio_id, asset_id, amount)
             }
             TransactionKind::Sell => amount,
-            TransactionKind::Deposit | TransactionKind::Withdraw => Decimal::ZERO,
+            TransactionKind::Deposit
+            | TransactionKind::Withdraw
+            | TransactionKind::LiabilityIncrease
+            | TransactionKind::LiabilityDecrease => Decimal::ZERO,
         };
         if !amount.is_zero() {
             entries.push(LedgerEntry {
@@ -99,8 +102,12 @@ fn transaction_entries(
 
 fn base_sign(kind: TransactionKind) -> Decimal {
     match kind {
-        TransactionKind::Buy | TransactionKind::Deposit => Decimal::ONE,
-        TransactionKind::Sell | TransactionKind::Withdraw => -Decimal::ONE,
+        TransactionKind::Buy | TransactionKind::Deposit | TransactionKind::LiabilityIncrease => {
+            Decimal::ONE
+        }
+        TransactionKind::Sell | TransactionKind::Withdraw | TransactionKind::LiabilityDecrease => {
+            -Decimal::ONE
+        }
     }
 }
 
@@ -108,7 +115,10 @@ fn quote_sign(kind: TransactionKind) -> Decimal {
     match kind {
         TransactionKind::Buy => -Decimal::ONE,
         TransactionKind::Sell => Decimal::ONE,
-        TransactionKind::Deposit | TransactionKind::Withdraw => Decimal::ZERO,
+        TransactionKind::Deposit
+        | TransactionKind::Withdraw
+        | TransactionKind::LiabilityIncrease
+        | TransactionKind::LiabilityDecrease => Decimal::ZERO,
     }
 }
 

@@ -20,6 +20,7 @@ struct ImportedAsset {
     symbol: String,
     name: String,
     yahoo_symbol: Option<String>,
+    valuation_currency: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Hash, serde::Serialize)]
@@ -115,26 +116,28 @@ fn import_row(
     source_row_hash: String,
     row: DeltaRow,
 ) -> anyhow::Result<()> {
-    let kind = TransactionKind::from_delta(&row.way)?;
+    let house_loan = is_house_loan(source, &row);
+    let kind = if house_loan {
+        TransactionKind::LiabilityIncrease
+    } else {
+        TransactionKind::from_delta(&row.way)?
+    };
     let timestamp = DateTime::parse_from_rfc3339(&row.date)?.with_timezone(&Utc);
     let base_amount = parse_decimal(&row.base_amount)?;
     let (base_symbol, base_name) = split_delta_asset(&row.base_currency_name);
-    let base_asset = normalize_imported_asset(
-        &base_symbol,
-        &base_name,
-        AssetKind::from_delta(&row.base_type),
-    );
     let mut base_kind = AssetKind::from_delta(&row.base_type);
-    if portfolio_is_house(source) && row.way == "WITHDRAW" {
+    if house_loan {
         base_kind = AssetKind::Liability;
     }
+    let base_asset = normalize_imported_asset(&base_symbol, &base_name, base_kind, house_loan);
     let posts_imported_fiat = imported_fiat_posts_to_ledger(source);
     let base_ledger_effect = ledger_effect_for_imported_asset(base_kind, posts_imported_fiat);
-    let base_asset_id = store.asset_id_with_yahoo_symbol(
+    let base_asset_id = store.asset_id_with_metadata(
         &base_asset.symbol,
         &base_asset.name,
         base_kind,
         base_asset.yahoo_symbol,
+        base_asset.valuation_currency,
     );
 
     let quote_amount = row
@@ -148,8 +151,14 @@ fn import_row(
         .filter(|s| !s.is_empty())
         .map(|symbol| {
             let kind = quote_asset_kind(symbol);
-            let asset = normalize_imported_asset(symbol, symbol, kind);
-            store.asset_id_with_yahoo_symbol(&asset.symbol, &asset.name, kind, asset.yahoo_symbol)
+            let asset = normalize_imported_asset(symbol, symbol, kind, false);
+            store.asset_id_with_metadata(
+                &asset.symbol,
+                &asset.name,
+                kind,
+                asset.yahoo_symbol,
+                asset.valuation_currency,
+            )
         });
     let quote_ledger_effect = if row.sync_base_holding || is_sync_base_companion(&row) {
         LedgerEffect::Ignore
@@ -174,8 +183,14 @@ fn import_row(
         .map(|label| {
             let (symbol, name) = split_delta_asset(label);
             let kind = AssetKind::from_delta(&row.base_type);
-            let asset = normalize_imported_asset(&symbol, &name, kind);
-            store.asset_id_with_yahoo_symbol(&asset.symbol, &asset.name, kind, asset.yahoo_symbol)
+            let asset = normalize_imported_asset(&symbol, &name, kind, false);
+            store.asset_id_with_metadata(
+                &asset.symbol,
+                &asset.name,
+                kind,
+                asset.yahoo_symbol,
+                asset.valuation_currency,
+            )
         });
     let transaction_id = store.data.allocate_id();
     store.data.transactions.push(Transaction {
@@ -213,6 +228,10 @@ fn portfolio_is_house(source: &str) -> bool {
     source.contains("delta_House_")
 }
 
+fn is_house_loan(source: &str, row: &DeltaRow) -> bool {
+    portfolio_is_house(source) && row.way == "WITHDRAW"
+}
+
 fn imported_fiat_posts_to_ledger(source: &str) -> bool {
     source.contains("delta_Fiat_") || source.contains("delta_House_")
 }
@@ -232,11 +251,25 @@ fn is_sync_base_companion(row: &DeltaRow) -> bool {
         .unwrap_or(false)
 }
 
-fn normalize_imported_asset(symbol: &str, name: &str, kind: AssetKind) -> ImportedAsset {
+fn normalize_imported_asset(
+    symbol: &str,
+    name: &str,
+    kind: AssetKind,
+    house_loan: bool,
+) -> ImportedAsset {
+    if house_loan {
+        return ImportedAsset {
+            symbol: "MORTGAGE".into(),
+            name: "Mortgage".into(),
+            yahoo_symbol: None,
+            valuation_currency: Some(symbol.to_string()),
+        };
+    }
     ImportedAsset {
         symbol: symbol.to_string(),
         name: name.to_string(),
         yahoo_symbol: yahoo_symbol_for_imported_asset(symbol, kind),
+        valuation_currency: None,
     }
 }
 

@@ -56,7 +56,7 @@ impl Store {
     }
 
     pub fn asset_id(&mut self, symbol: &str, name: &str, kind: AssetKind) -> Id {
-        self.asset_id_with_yahoo_symbol(symbol, name, kind, None)
+        self.asset_id_with_metadata(symbol, name, kind, None, None)
     }
 
     pub fn asset_id_with_yahoo_symbol(
@@ -65,6 +65,17 @@ impl Store {
         name: &str,
         kind: AssetKind,
         yahoo_symbol: Option<String>,
+    ) -> Id {
+        self.asset_id_with_metadata(symbol, name, kind, yahoo_symbol, None)
+    }
+
+    pub fn asset_id_with_metadata(
+        &mut self,
+        symbol: &str,
+        name: &str,
+        kind: AssetKind,
+        yahoo_symbol: Option<String>,
+        valuation_currency: Option<String>,
     ) -> Id {
         if let Some(asset) = self
             .data
@@ -75,6 +86,9 @@ impl Store {
             if yahoo_symbol.is_some() {
                 asset.yahoo_symbol = yahoo_symbol;
             }
+            if valuation_currency.is_some() {
+                asset.valuation_currency = valuation_currency;
+            }
             return asset.id;
         }
         let id = self.data.allocate_id();
@@ -84,6 +98,7 @@ impl Store {
             name: name.to_string(),
             kind,
             yahoo_symbol,
+            valuation_currency,
         });
         id
     }

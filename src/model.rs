@@ -36,6 +36,8 @@ pub enum TransactionKind {
     Sell,
     Deposit,
     Withdraw,
+    LiabilityIncrease,
+    LiabilityDecrease,
 }
 
 impl TransactionKind {
@@ -64,6 +66,8 @@ pub struct Asset {
     pub kind: AssetKind,
     #[serde(default)]
     pub yahoo_symbol: Option<String>,
+    #[serde(default)]
+    pub valuation_currency: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

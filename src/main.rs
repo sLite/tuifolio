@@ -90,7 +90,9 @@ fn tui_command(store: &mut Store) -> anyhow::Result<()> {
 fn summary_command(store: &Store) {
     let report = build_report(&store.data);
     println!("Base: {}", report.base_currency);
-    println!("Net worth: {}", report.total_value.round_dp(2));
+    println!("Assets: {}", report.total_assets.round_dp(2));
+    println!("Liabilities: {}", report.total_liabilities.round_dp(2));
+    println!("Net worth: {}", report.net_value.round_dp(2));
     println!(
         "Unrealized PnL: {}",
         report.total_unrealized_pnl.round_dp(2)
@@ -99,9 +101,11 @@ fn summary_command(store: &Store) {
     println!("Negative balances: {}", report.negative_balances.len());
     for portfolio in report.portfolios {
         println!(
-            "{}: {} missing={}",
+            "{}: assets={} liabilities={} net={} missing={}",
             portfolio.name,
-            portfolio.value.round_dp(2),
+            portfolio.assets.round_dp(2),
+            portfolio.liabilities.round_dp(2),
+            portfolio.net_value.round_dp(2),
             portfolio.unresolved
         );
     }

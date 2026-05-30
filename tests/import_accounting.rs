@@ -45,16 +45,36 @@ fn imports_house_as_asset_and_liability() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
     import_delta_dir(&mut store, &dir).unwrap();
 
-    let has_liability = store
+    let mortgage = store
         .data
         .assets
         .iter()
-        .any(|asset| asset.kind == AssetKind::Liability);
+        .find(|asset| asset.symbol == "MORTGAGE" && asset.kind == AssetKind::Liability)
+        .unwrap();
+    let mortgage_transaction = store
+        .data
+        .transactions
+        .iter()
+        .find(|transaction| transaction.base_asset_id == mortgage.id)
+        .unwrap();
     let report = build_report(&store.data);
+    let house = report
+        .portfolios
+        .iter()
+        .find(|portfolio| portfolio.name == "House")
+        .unwrap();
 
-    assert!(has_liability);
+    assert_eq!(mortgage.name, "Mortgage");
+    assert_eq!(mortgage.valuation_currency.as_deref(), Some("EUR"));
+    assert_eq!(
+        mortgage_transaction.kind,
+        TransactionKind::LiabilityIncrease
+    );
+    assert_eq!(house.assets, Decimal::new(600000, 0));
+    assert_eq!(house.liabilities, Decimal::new(123000, 0));
+    assert_eq!(house.net_value, Decimal::new(477000, 0));
     assert!(
-        report
+        !report
             .negative_balances
             .iter()
             .any(|row| row.portfolio == "House")
