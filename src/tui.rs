@@ -10,7 +10,8 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
     style::{Color, Modifier, Style, Stylize},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table},
 };
 
 use crate::{
@@ -112,12 +113,14 @@ fn render(frame: &mut Frame, report: &Report, state: &AppState) {
 
 fn header_widget(report: &Report) -> Paragraph<'static> {
     let text = format!(
-        "Tuifolio | Base {} | Net worth {} | Unrealized PnL {}",
+        " Base {}  Net worth {}  Unrealized PnL {} ",
         report.base_currency,
         money(report.net_value),
         money(report.total_unrealized_pnl)
     );
-    Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Dashboard"))
+    Paragraph::new(text)
+        .style(Style::new().fg(Color::White).add_modifier(Modifier::BOLD))
+        .block(panel("Tuifolio", true))
 }
 
 fn render_home(frame: &mut Frame, report: &Report, state: &AppState, area: ratatui::layout::Rect) {
@@ -147,7 +150,7 @@ fn render_home(frame: &mut Frame, report: &Report, state: &AppState, area: ratat
         warnings
     );
     frame.render_widget(
-        Paragraph::new(text).block(Block::bordered().title("Home")),
+        Paragraph::new(text).block(panel("Home", false)),
         summary_area,
     );
     let visible_rows = table_visible_rows(holdings_area);
@@ -164,7 +167,7 @@ fn render_home(frame: &mut Frame, report: &Report, state: &AppState, area: ratat
         .take(visible_rows)
         .map(|(index, holding)| holding_row(holding, index == state.selected_home_holding));
     frame.render_widget(
-        holding_table(rows).block(Block::bordered().title("Holdings")),
+        holding_table(rows).block(panel("Holdings", true)),
         holdings_area,
     );
 }
@@ -197,7 +200,7 @@ fn render_portfolios(
         .take(portfolio_visible_rows)
         .map(|(index, portfolio)| {
             let style = if index == state.selected_portfolio {
-                Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                selected_row_style(state.portfolio_focus == PortfolioFocus::List)
             } else {
                 Style::new()
             };
@@ -210,7 +213,13 @@ fn render_portfolios(
             ])
             .style(style)
         });
-    frame.render_widget(portfolio_table(rows), portfolio_area);
+    frame.render_widget(
+        portfolio_table(rows).block(panel(
+            "Portfolios",
+            state.portfolio_focus == PortfolioFocus::List,
+        )),
+        portfolio_area,
+    );
 
     let selected_holdings = report
         .holdings
@@ -236,31 +245,36 @@ fn render_portfolios(
             )
         });
     frame.render_widget(
-        portfolio_holding_table(rows)
-            .block(Block::bordered().title(format!("Assets: {selected_name}"))),
+        portfolio_holding_table(rows).block(panel(
+            format!("Assets: {selected_name}"),
+            state.portfolio_focus == PortfolioFocus::Holdings,
+        )),
         holdings_area,
     );
 }
 
 fn holding_row(holding: &crate::accounting::HoldingRow, selected: bool) -> Row<'static> {
     let style = if selected {
-        Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-    } else if holding.quantity < rust_decimal::Decimal::ZERO {
-        Style::new().fg(Color::Red)
+        selected_row_style(true)
+    } else if matches!(holding.kind, crate::model::AssetKind::Liability) {
+        Style::new().fg(Color::Gray)
     } else {
         Style::new()
     };
     Row::new(vec![
         Cell::from(holding.portfolio.clone()),
         Cell::from(holding.symbol.clone()),
-        Cell::from(display_quantity(holding)),
-        Cell::from(display_value(holding)),
-        Cell::from(
-            holding
-                .unrealized_pnl
-                .map(money)
-                .unwrap_or_else(|| "n/a".into()),
+        numeric_cell(
+            display_quantity(holding),
+            selected,
+            display_quantity_is_negative(holding),
         ),
+        numeric_cell(
+            display_value(holding),
+            selected,
+            display_value_is_negative(holding),
+        ),
+        pnl_cell(holding, selected),
         Cell::from(
             holding
                 .net_invested
@@ -274,22 +288,25 @@ fn holding_row(holding: &crate::accounting::HoldingRow, selected: bool) -> Row<'
 
 fn portfolio_holding_row(holding: &crate::accounting::HoldingRow, selected: bool) -> Row<'static> {
     let style = if selected {
-        Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-    } else if holding.quantity < rust_decimal::Decimal::ZERO {
-        Style::new().fg(Color::Red)
+        selected_row_style(true)
+    } else if matches!(holding.kind, crate::model::AssetKind::Liability) {
+        Style::new().fg(Color::Gray)
     } else {
         Style::new()
     };
     Row::new(vec![
         Cell::from(holding.symbol.clone()),
-        Cell::from(display_quantity(holding)),
-        Cell::from(display_value(holding)),
-        Cell::from(
-            holding
-                .unrealized_pnl
-                .map(money)
-                .unwrap_or_else(|| "n/a".into()),
+        numeric_cell(
+            display_quantity(holding),
+            selected,
+            display_quantity_is_negative(holding),
         ),
+        numeric_cell(
+            display_value(holding),
+            selected,
+            display_value_is_negative(holding),
+        ),
+        pnl_cell(holding, selected),
         Cell::from(
             holding
                 .net_invested
@@ -315,17 +332,13 @@ where
             Constraint::Length(16),
         ],
     )
-    .header(
-        Row::new([
-            "Portfolio",
-            "Assets",
-            "Liabilities",
-            "Net",
-            "Missing Prices",
-        ])
-        .style(Style::new().add_modifier(Modifier::BOLD)),
-    )
-    .block(Block::bordered().title("Data"))
+    .header(table_header([
+        "Portfolio",
+        "Assets",
+        "Liabilities",
+        "Net",
+        "Missing Prices",
+    ]))
 }
 
 fn holding_table<'a, I>(rows: I) -> Table<'a>
@@ -336,27 +349,23 @@ where
         rows,
         [
             Constraint::Length(14),
-            Constraint::Length(20),
+            Constraint::Length(12),
             Constraint::Length(18),
             Constraint::Length(16),
+            Constraint::Length(30),
             Constraint::Length(16),
-            Constraint::Length(16),
-            Constraint::Min(10),
+            Constraint::Min(0),
         ],
     )
-    .header(
-        Row::new([
-            "Portfolio",
-            "Asset",
-            "Qty",
-            "Value",
-            "Unrealized PnL",
-            "Cost Basis",
-            "Name",
-        ])
-        .style(Style::new().add_modifier(Modifier::BOLD)),
-    )
-    .block(Block::bordered().title("Data"))
+    .header(table_header([
+        "Portfolio",
+        "Asset",
+        "Qty",
+        "Value",
+        "Unrealized PnL",
+        "Cost Basis",
+        "Name",
+    ]))
 }
 
 fn portfolio_holding_table<'a, I>(rows: I) -> Table<'a>
@@ -366,26 +375,56 @@ where
     Table::new(
         rows,
         [
+            Constraint::Length(14),
             Constraint::Length(18),
-            Constraint::Length(18),
             Constraint::Length(16),
+            Constraint::Length(30),
             Constraint::Length(16),
-            Constraint::Length(16),
-            Constraint::Min(10),
+            Constraint::Min(0),
         ],
     )
-    .header(
-        Row::new([
-            "Asset",
-            "Qty",
-            "Value",
-            "Unrealized PnL",
-            "Cost Basis",
-            "Name",
-        ])
-        .style(Style::new().add_modifier(Modifier::BOLD)),
-    )
-    .block(Block::bordered().title("Data"))
+    .header(table_header([
+        "Asset",
+        "Qty",
+        "Value",
+        "Unrealized PnL",
+        "Cost Basis",
+        "Name",
+    ]))
+}
+
+fn panel<T: Into<String>>(title: T, active: bool) -> Block<'static> {
+    let title = title.into();
+    let color = if active { Color::Cyan } else { Color::DarkGray };
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(if active {
+            BorderType::Rounded
+        } else {
+            BorderType::Plain
+        })
+        .border_style(Style::new().fg(color))
+        .title(Line::from(vec![Span::styled(
+            format!(" {title} "),
+            Style::new().fg(color).add_modifier(Modifier::BOLD),
+        )]))
+}
+
+fn table_header<const N: usize>(columns: [&'static str; N]) -> Row<'static> {
+    Row::new(columns).style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+}
+
+fn selected_row_style(active: bool) -> Style {
+    if active {
+        Style::new()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::new()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD | Modifier::DIM)
+    }
 }
 
 fn cycle_base_currency(data: &mut StoreData) {
@@ -489,7 +528,11 @@ fn scroll_offset(selected: usize, len: usize, visible_rows: usize) -> usize {
 }
 
 fn money(value: rust_decimal::Decimal) -> String {
-    value.round_dp(2).to_string()
+    fixed_2(value)
+}
+
+fn fixed_2(value: rust_decimal::Decimal) -> String {
+    format!("{:.2}", value.round_dp(2))
 }
 
 fn negative_money(value: rust_decimal::Decimal) -> String {
@@ -517,4 +560,55 @@ fn display_value(holding: &crate::accounting::HoldingRow) -> String {
     } else {
         money(value)
     }
+}
+
+fn numeric_cell(value: String, selected: bool, negative: bool) -> Cell<'static> {
+    if selected || !negative {
+        Cell::from(value)
+    } else {
+        Cell::from(value).style(Style::new().fg(Color::LightRed))
+    }
+}
+
+fn pnl_cell(holding: &crate::accounting::HoldingRow, selected: bool) -> Cell<'static> {
+    let Some(pnl) = holding.unrealized_pnl else {
+        return Cell::from("n/a");
+    };
+    let text = if let Some(percent) = unrealized_pnl_percent(holding) {
+        format!("{} ({}%)", money(pnl), fixed_2(percent))
+    } else {
+        money(pnl)
+    };
+    if selected {
+        Cell::from(text)
+    } else if pnl < rust_decimal::Decimal::ZERO {
+        Cell::from(text).style(Style::new().fg(Color::LightRed))
+    } else {
+        Cell::from(text).style(Style::new().fg(Color::Green))
+    }
+}
+
+fn unrealized_pnl_percent(
+    holding: &crate::accounting::HoldingRow,
+) -> Option<rust_decimal::Decimal> {
+    let invested = holding.net_invested?;
+    if invested.is_zero() {
+        return None;
+    }
+    holding
+        .unrealized_pnl
+        .map(|pnl| pnl / invested.abs() * rust_decimal::Decimal::new(100, 0))
+}
+
+fn display_quantity_is_negative(holding: &crate::accounting::HoldingRow) -> bool {
+    if matches!(holding.kind, crate::model::AssetKind::Liability) {
+        !holding.quantity.is_zero()
+    } else {
+        holding.quantity < rust_decimal::Decimal::ZERO
+    }
+}
+
+fn display_value_is_negative(holding: &crate::accounting::HoldingRow) -> bool {
+    matches!(holding.kind, crate::model::AssetKind::Liability)
+        && holding.value.map(|value| !value.is_zero()).unwrap_or(false)
 }

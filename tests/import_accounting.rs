@@ -35,7 +35,7 @@ fn imports_all_delta_rows_idempotently() {
     assert_eq!(first.skipped, 0);
     assert_eq!(second.imported, 0);
     assert_eq!(second.skipped, 148);
-    assert_eq!(store.data.transactions.len(), 148);
+    assert_eq!(store.data.transactions.len(), 151);
     assert!(!store.data.ledger_entries.is_empty());
 }
 
@@ -45,39 +45,83 @@ fn imports_house_as_asset_and_liability() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
     import_delta_dir(&mut store, &dir).unwrap();
 
+    let property = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.symbol == "PROPERTY" && asset.kind == AssetKind::Property)
+        .unwrap();
     let mortgage = store
         .data
         .assets
         .iter()
         .find(|asset| asset.symbol == "MORTGAGE" && asset.kind == AssetKind::Liability)
         .unwrap();
-    let mortgage_transaction = store
+    let property_transactions = store
         .data
         .transactions
         .iter()
-        .find(|transaction| transaction.base_asset_id == mortgage.id)
-        .unwrap();
+        .filter(|transaction| transaction.base_asset_id == property.id)
+        .collect::<Vec<_>>();
+    let mortgage_transactions = store
+        .data
+        .transactions
+        .iter()
+        .filter(|transaction| transaction.base_asset_id == mortgage.id)
+        .collect::<Vec<_>>();
     let report = build_report(&store.data);
     let house = report
         .portfolios
         .iter()
-        .find(|portfolio| portfolio.name == "House")
+        .find(|portfolio| portfolio.name == "Hintersdorf")
         .unwrap();
 
-    assert_eq!(mortgage.name, "Mortgage");
-    assert_eq!(mortgage.valuation_currency.as_deref(), Some("EUR"));
+    assert_eq!(property.name, "Grundstück");
+    assert_eq!(property.valuation_currency.as_deref(), Some("EUR"));
+    assert_eq!(property_transactions.len(), 2);
     assert_eq!(
-        mortgage_transaction.kind,
+        property_transactions[0].kind,
+        TransactionKind::AssetIncrease
+    );
+    assert_eq!(
+        property_transactions[0].base_amount,
+        Decimal::new(255000, 0)
+    );
+    assert_eq!(
+        property_transactions[1].kind,
+        TransactionKind::AssetIncrease
+    );
+    assert_eq!(
+        property_transactions[1].base_amount,
+        Decimal::new(345000, 0)
+    );
+    assert_eq!(mortgage.name, "Kredit");
+    assert_eq!(mortgage.valuation_currency.as_deref(), Some("EUR"));
+    assert_eq!(mortgage_transactions.len(), 2);
+    assert_eq!(
+        mortgage_transactions[0].kind,
         TransactionKind::LiabilityIncrease
     );
+    assert_eq!(
+        mortgage_transactions[0].base_amount,
+        Decimal::new(255000, 0)
+    );
+    assert_eq!(
+        mortgage_transactions[1].kind,
+        TransactionKind::LiabilityDecrease
+    );
+    assert_eq!(
+        mortgage_transactions[1].base_amount,
+        Decimal::new(145000, 0)
+    );
     assert_eq!(house.assets, Decimal::new(600000, 0));
-    assert_eq!(house.liabilities, Decimal::new(123000, 0));
-    assert_eq!(house.net_value, Decimal::new(477000, 0));
+    assert_eq!(house.liabilities, Decimal::new(110000, 0));
+    assert_eq!(house.net_value, Decimal::new(490000, 0));
     assert!(
         !report
             .negative_balances
             .iter()
-            .any(|row| row.portfolio == "House")
+            .any(|row| row.portfolio == "Hintersdorf")
     );
 }
 
@@ -173,8 +217,7 @@ fn delta_import_ignores_fiat_holdings_outside_fiat_and_house() {
     let report = build_report(&store.data);
 
     assert!(!report.holdings.iter().any(|row| {
-        matches!(row.portfolio.as_str(), "Crypto" | "Stocks" | "Metal")
-            && matches!(row.kind, AssetKind::Fiat)
+        matches!(row.portfolio.as_str(), "Crypto" | "Metal") && matches!(row.kind, AssetKind::Fiat)
     }));
 }
 
@@ -207,6 +250,22 @@ fn stock_splits_adjust_imported_share_balances() {
         .sum::<Decimal>();
 
     assert_eq!(balance, Decimal::new(81, 0));
+}
+
+#[test]
+fn import_adds_stocks_eur_cash_holding() {
+    let mut store = temp_store();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
+    import_delta_dir(&mut store, &dir).unwrap();
+
+    let report = build_report(&store.data);
+
+    assert!(report.holdings.iter().any(|row| {
+        row.portfolio == "Stocks"
+            && row.symbol == "EUR"
+            && row.kind == AssetKind::Fiat
+            && row.quantity == Decimal::new(4942, 0)
+    }));
 }
 
 #[test]

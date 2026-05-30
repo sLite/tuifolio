@@ -13,6 +13,7 @@ pub enum AssetKind {
     Stock,
     Fund,
     Commodity,
+    Property,
     Custom,
     Liability,
 }
@@ -36,6 +37,8 @@ pub enum TransactionKind {
     Sell,
     Deposit,
     Withdraw,
+    AssetIncrease,
+    AssetDecrease,
     LiabilityIncrease,
     LiabilityDecrease,
 }

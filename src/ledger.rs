@@ -67,6 +67,8 @@ fn transaction_entries(
             TransactionKind::Sell => amount,
             TransactionKind::Deposit
             | TransactionKind::Withdraw
+            | TransactionKind::AssetIncrease
+            | TransactionKind::AssetDecrease
             | TransactionKind::LiabilityIncrease
             | TransactionKind::LiabilityDecrease => Decimal::ZERO,
         };
@@ -102,12 +104,14 @@ fn transaction_entries(
 
 fn base_sign(kind: TransactionKind) -> Decimal {
     match kind {
-        TransactionKind::Buy | TransactionKind::Deposit | TransactionKind::LiabilityIncrease => {
-            Decimal::ONE
-        }
-        TransactionKind::Sell | TransactionKind::Withdraw | TransactionKind::LiabilityDecrease => {
-            -Decimal::ONE
-        }
+        TransactionKind::Buy
+        | TransactionKind::Deposit
+        | TransactionKind::AssetIncrease
+        | TransactionKind::LiabilityIncrease => Decimal::ONE,
+        TransactionKind::Sell
+        | TransactionKind::Withdraw
+        | TransactionKind::AssetDecrease
+        | TransactionKind::LiabilityDecrease => -Decimal::ONE,
     }
 }
 
@@ -117,6 +121,8 @@ fn quote_sign(kind: TransactionKind) -> Decimal {
         TransactionKind::Sell => Decimal::ONE,
         TransactionKind::Deposit
         | TransactionKind::Withdraw
+        | TransactionKind::AssetIncrease
+        | TransactionKind::AssetDecrease
         | TransactionKind::LiabilityIncrease
         | TransactionKind::LiabilityDecrease => Decimal::ZERO,
     }

@@ -16,11 +16,32 @@ use crate::{
     store::Store,
 };
 
+const PROPERTY_PURCHASE_DATE: &str = "2013-01-01T00:00:00.000Z";
+const PROPERTY_PURCHASE_PRICE_EUR: Decimal = Decimal::from_parts(255000, 0, 0, false, 0);
+const MORTGAGE_START_DATE: &str = "2013-01-01T00:00:00.000Z";
+const MORTGAGE_CURRENT_DATE: &str = "2026-05-30T00:00:00.000Z";
+const MORTGAGE_START_AMOUNT_EUR: Decimal = Decimal::from_parts(255000, 0, 0, false, 0);
+const MORTGAGE_CURRENT_AMOUNT_EUR: Decimal = Decimal::from_parts(110000, 0, 0, false, 0);
+const STOCKS_EUR_CASH_DATE: &str = "2026-05-30T00:00:00.000Z";
+const STOCKS_EUR_CASH_AMOUNT: Decimal = Decimal::from_parts(4942, 0, 0, false, 0);
+const STOCKS_EUR_CASH_SOURCE_ROW_HASH: &str = "manual-import:stocks-eur-cash-2026-05-30";
+
 struct ImportedAsset {
     symbol: String,
     name: String,
     yahoo_symbol: Option<String>,
     valuation_currency: Option<String>,
+}
+
+struct TransactionDraft {
+    portfolio_id: u64,
+    timestamp: DateTime<Utc>,
+    kind: TransactionKind,
+    base_asset_id: u64,
+    base_amount: Decimal,
+    source: String,
+    source_row_hash: String,
+    notes: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Hash, serde::Serialize)]
@@ -74,6 +95,7 @@ pub fn import_delta_dir(store: &mut Store, dir: &Path) -> anyhow::Result<ImportS
         imported += summary.imported;
         skipped += summary.skipped;
     }
+    ensure_stocks_eur_cash_holding(store)?;
     rebuild_ledger(&mut store.data)?;
     Ok(ImportSummary { imported, skipped })
 }
@@ -117,18 +139,17 @@ fn import_row(
     row: DeltaRow,
 ) -> anyhow::Result<()> {
     let house_loan = is_house_loan(source, &row);
-    let kind = if house_loan {
-        TransactionKind::LiabilityIncrease
-    } else {
-        TransactionKind::from_delta(&row.way)?
-    };
+    if is_house_property(source, &row) {
+        return import_house_property(store, portfolio_id, source, source_row_hash, row);
+    }
+    if house_loan {
+        return import_house_loan(store, portfolio_id, source, source_row_hash);
+    }
+    let kind = TransactionKind::from_delta(&row.way)?;
     let timestamp = DateTime::parse_from_rfc3339(&row.date)?.with_timezone(&Utc);
     let base_amount = parse_decimal(&row.base_amount)?;
     let (base_symbol, base_name) = split_delta_asset(&row.base_currency_name);
-    let mut base_kind = AssetKind::from_delta(&row.base_type);
-    if house_loan {
-        base_kind = AssetKind::Liability;
-    }
+    let base_kind = AssetKind::from_delta(&row.base_type);
     let base_asset = normalize_imported_asset(&base_symbol, &base_name, base_kind, house_loan);
     let posts_imported_fiat = imported_fiat_posts_to_ledger(source);
     let base_ledger_effect = ledger_effect_for_imported_asset(base_kind, posts_imported_fiat);
@@ -216,12 +237,18 @@ fn import_row(
 }
 
 fn portfolio_name(path: &Path) -> String {
-    path.file_stem()
+    let name = path
+        .file_stem()
         .and_then(|s| s.to_str())
         .and_then(|s| s.strip_prefix("delta_"))
         .and_then(|s| s.split('_').next())
         .unwrap_or("Default")
-        .to_string()
+        .to_string();
+    if name == "House" {
+        "Hintersdorf".into()
+    } else {
+        name
+    }
 }
 
 fn portfolio_is_house(source: &str) -> bool {
@@ -230,6 +257,10 @@ fn portfolio_is_house(source: &str) -> bool {
 
 fn is_house_loan(source: &str, row: &DeltaRow) -> bool {
     portfolio_is_house(source) && row.way == "WITHDRAW"
+}
+
+fn is_house_property(source: &str, row: &DeltaRow) -> bool {
+    portfolio_is_house(source) && row.way == "DEPOSIT"
 }
 
 fn imported_fiat_posts_to_ledger(source: &str) -> bool {
@@ -260,7 +291,7 @@ fn normalize_imported_asset(
     if house_loan {
         return ImportedAsset {
             symbol: "MORTGAGE".into(),
-            name: "Mortgage".into(),
+            name: "Kredit".into(),
             yahoo_symbol: None,
             valuation_currency: Some(symbol.to_string()),
         };
@@ -282,8 +313,160 @@ fn yahoo_symbol_for_imported_asset(symbol: &str, kind: AssetKind) -> Option<Stri
             "GOLD" => Some("GC=F".into()),
             _ => Some(symbol.to_string()),
         },
-        AssetKind::Fiat | AssetKind::Custom | AssetKind::Liability => None,
+        AssetKind::Fiat | AssetKind::Custom | AssetKind::Property | AssetKind::Liability => None,
     }
+}
+
+fn import_house_property(
+    store: &mut Store,
+    portfolio_id: u64,
+    source: &str,
+    source_row_hash: String,
+    row: DeltaRow,
+) -> anyhow::Result<()> {
+    let timestamp = DateTime::parse_from_rfc3339(&row.date)?.with_timezone(&Utc);
+    let current_value = parse_decimal(&row.base_amount)?;
+    let (currency, _) = split_delta_asset(&row.base_currency_name);
+    let property_asset_id = store.asset_id_with_metadata(
+        "PROPERTY",
+        "Grundstück",
+        AssetKind::Property,
+        None,
+        Some("EUR".into()),
+    );
+
+    push_transaction(
+        store,
+        TransactionDraft {
+            portfolio_id,
+            timestamp: DateTime::parse_from_rfc3339(PROPERTY_PURCHASE_DATE)?.with_timezone(&Utc),
+            kind: TransactionKind::AssetIncrease,
+            base_asset_id: property_asset_id,
+            base_amount: PROPERTY_PURCHASE_PRICE_EUR,
+            source: source.to_string(),
+            source_row_hash: format!("{source_row_hash}:purchase"),
+            notes: Some(format!("Purchase price ({currency})")),
+        },
+    );
+
+    let valuation_increase = current_value - PROPERTY_PURCHASE_PRICE_EUR;
+    if !valuation_increase.is_zero() {
+        let kind = if valuation_increase > Decimal::ZERO {
+            TransactionKind::AssetIncrease
+        } else {
+            TransactionKind::AssetDecrease
+        };
+        push_transaction(
+            store,
+            TransactionDraft {
+                portfolio_id,
+                timestamp,
+                kind,
+                base_asset_id: property_asset_id,
+                base_amount: valuation_increase.abs(),
+                source: source.to_string(),
+                source_row_hash,
+                notes: clean(row.notes),
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn import_house_loan(
+    store: &mut Store,
+    portfolio_id: u64,
+    source: &str,
+    source_row_hash: String,
+) -> anyhow::Result<()> {
+    let mortgage_asset_id = store.asset_id_with_metadata(
+        "MORTGAGE",
+        "Kredit",
+        AssetKind::Liability,
+        None,
+        Some("EUR".into()),
+    );
+    push_transaction(
+        store,
+        TransactionDraft {
+            portfolio_id,
+            timestamp: DateTime::parse_from_rfc3339(MORTGAGE_START_DATE)?.with_timezone(&Utc),
+            kind: TransactionKind::LiabilityIncrease,
+            base_asset_id: mortgage_asset_id,
+            base_amount: MORTGAGE_START_AMOUNT_EUR,
+            source: source.to_string(),
+            source_row_hash: format!("{source_row_hash}:start"),
+            notes: Some("Initial mortgage".into()),
+        },
+    );
+    let reduction = MORTGAGE_START_AMOUNT_EUR - MORTGAGE_CURRENT_AMOUNT_EUR;
+    if !reduction.is_zero() {
+        push_transaction(
+            store,
+            TransactionDraft {
+                portfolio_id,
+                timestamp: DateTime::parse_from_rfc3339(MORTGAGE_CURRENT_DATE)?.with_timezone(&Utc),
+                kind: TransactionKind::LiabilityDecrease,
+                base_asset_id: mortgage_asset_id,
+                base_amount: reduction,
+                source: source.to_string(),
+                source_row_hash,
+                notes: Some("Current mortgage balance".into()),
+            },
+        );
+    }
+    Ok(())
+}
+
+fn ensure_stocks_eur_cash_holding(store: &mut Store) -> anyhow::Result<()> {
+    if store
+        .data
+        .transactions
+        .iter()
+        .any(|transaction| transaction.source_row_hash == STOCKS_EUR_CASH_SOURCE_ROW_HASH)
+    {
+        return Ok(());
+    }
+    let portfolio_id = store.portfolio_id("Stocks");
+    let eur_asset_id = store.asset_id("EUR", "EUR", AssetKind::Fiat);
+    push_transaction(
+        store,
+        TransactionDraft {
+            portfolio_id,
+            timestamp: DateTime::parse_from_rfc3339(STOCKS_EUR_CASH_DATE)?.with_timezone(&Utc),
+            kind: TransactionKind::Deposit,
+            base_asset_id: eur_asset_id,
+            base_amount: STOCKS_EUR_CASH_AMOUNT,
+            source: "manual-import".into(),
+            source_row_hash: STOCKS_EUR_CASH_SOURCE_ROW_HASH.into(),
+            notes: Some("Stocks EUR cash holding".into()),
+        },
+    );
+    Ok(())
+}
+
+fn push_transaction(store: &mut Store, draft: TransactionDraft) {
+    let transaction_id = store.data.allocate_id();
+    store.data.transactions.push(Transaction {
+        id: transaction_id,
+        portfolio_id: draft.portfolio_id,
+        timestamp: draft.timestamp,
+        kind: draft.kind,
+        base_asset_id: draft.base_asset_id,
+        base_amount: draft.base_amount,
+        base_ledger_effect: LedgerEffect::Post,
+        quote_asset_id: None,
+        quote_amount: None,
+        quote_ledger_effect: LedgerEffect::Post,
+        fee_asset_id: None,
+        fee_amount: None,
+        exchange: None,
+        broker: None,
+        notes: draft.notes,
+        source: draft.source,
+        source_row_hash: draft.source_row_hash,
+    });
 }
 
 fn row_hash(path: &Path, row: &DeltaRow) -> anyhow::Result<String> {

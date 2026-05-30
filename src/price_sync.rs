@@ -103,7 +103,9 @@ fn yahoo_asset_native_price(
             fetch_yahoo_price(client, yahoo_market_symbol(asset))
                 .map(|price| price.map(|(p, c)| (p, c, "yahoo".into())))
         }
-        AssetKind::Fiat | AssetKind::Custom | AssetKind::Liability => Ok(None),
+        AssetKind::Fiat | AssetKind::Custom | AssetKind::Property | AssetKind::Liability => {
+            Ok(None)
+        }
     }
 }
 

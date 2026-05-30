@@ -259,6 +259,8 @@ fn net_invested(
             TransactionKind::Sell => invested -= quote_amount * rate,
             TransactionKind::Deposit
             | TransactionKind::Withdraw
+            | TransactionKind::AssetIncrease
+            | TransactionKind::AssetDecrease
             | TransactionKind::LiabilityIncrease
             | TransactionKind::LiabilityDecrease => {}
         }

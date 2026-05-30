@@ -90,22 +90,19 @@ fn tui_command(store: &mut Store) -> anyhow::Result<()> {
 fn summary_command(store: &Store) {
     let report = build_report(&store.data);
     println!("Base: {}", report.base_currency);
-    println!("Assets: {}", report.total_assets.round_dp(2));
-    println!("Liabilities: {}", report.total_liabilities.round_dp(2));
-    println!("Net worth: {}", report.net_value.round_dp(2));
-    println!(
-        "Unrealized PnL: {}",
-        report.total_unrealized_pnl.round_dp(2)
-    );
+    println!("Assets: {}", fixed_2(report.total_assets));
+    println!("Liabilities: {}", fixed_2(report.total_liabilities));
+    println!("Net worth: {}", fixed_2(report.net_value));
+    println!("Unrealized PnL: {}", fixed_2(report.total_unrealized_pnl));
     println!("Holdings: {}", report.holdings.len());
     println!("Negative balances: {}", report.negative_balances.len());
     for portfolio in report.portfolios {
         println!(
             "{}: assets={} liabilities={} net={} missing={}",
             portfolio.name,
-            portfolio.assets.round_dp(2),
-            portfolio.liabilities.round_dp(2),
-            portfolio.net_value.round_dp(2),
+            fixed_2(portfolio.assets),
+            fixed_2(portfolio.liabilities),
+            fixed_2(portfolio.net_value),
             portfolio.unresolved
         );
     }
@@ -133,10 +130,7 @@ fn holding_command(store: &Store, symbol: &str) {
             holding.portfolio,
             holding.symbol,
             holding.quantity,
-            holding
-                .value
-                .map(|value| value.round_dp(2).to_string())
-                .unwrap_or_else(|| "n/a".into()),
+            holding.value.map(fixed_2).unwrap_or_else(|| "n/a".into()),
             report.base_currency
         );
     }
@@ -172,4 +166,8 @@ fn base_command(store: &mut Store, currency: String) -> anyhow::Result<()> {
     store.save()?;
     println!("selected base currency: {currency}");
     Ok(())
+}
+
+fn fixed_2(value: Decimal) -> String {
+    format!("{:.2}", value.round_dp(2))
 }
