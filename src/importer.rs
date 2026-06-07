@@ -12,7 +12,10 @@ use serde::Deserialize;
 
 use crate::{
     ledger::rebuild_ledger,
-    model::{AssetKind, LedgerEffect, StockSplit, Transaction, TransactionKind},
+    model::{
+        AssetKind, LedgerEffect, StockSplit, Transaction, TransactionKind,
+        default_tradingview_symbol,
+    },
     store::Store,
 };
 
@@ -28,6 +31,7 @@ struct ImportedAsset {
     symbol: String,
     name: String,
     yahoo_symbol: Option<String>,
+    tradingview_symbol: Option<String>,
     valuation_currency: Option<String>,
 }
 
@@ -156,6 +160,7 @@ fn import_row(
         &base_asset.name,
         base_kind,
         base_asset.yahoo_symbol,
+        base_asset.tradingview_symbol,
         base_asset.valuation_currency,
     );
 
@@ -176,6 +181,7 @@ fn import_row(
                 &asset.name,
                 kind,
                 asset.yahoo_symbol,
+                asset.tradingview_symbol,
                 asset.valuation_currency,
             )
         });
@@ -206,6 +212,7 @@ fn import_row(
                 &asset.name,
                 kind,
                 asset.yahoo_symbol,
+                asset.tradingview_symbol,
                 asset.valuation_currency,
             )
         });
@@ -307,6 +314,7 @@ fn normalize_imported_asset(
             symbol: "MORTGAGE".into(),
             name: "Kredit".into(),
             yahoo_symbol: None,
+            tradingview_symbol: None,
             valuation_currency: Some(symbol.to_string()),
         };
     }
@@ -314,6 +322,7 @@ fn normalize_imported_asset(
         symbol: symbol.to_string(),
         name: name.to_string(),
         yahoo_symbol: yahoo_symbol_for_imported_asset(symbol, kind),
+        tradingview_symbol: default_tradingview_symbol(symbol, kind),
         valuation_currency: None,
     }
 }
@@ -345,6 +354,7 @@ fn import_house_property(
         "PROPERTY",
         "Grundstück",
         AssetKind::Property,
+        None,
         None,
         Some("EUR".into()),
     );
@@ -398,6 +408,7 @@ fn import_house_loan(
         "MORTGAGE",
         "Kredit",
         AssetKind::Liability,
+        None,
         None,
         Some("EUR".into()),
     );

@@ -1,4 +1,8 @@
-use std::io::{self, stdout};
+use std::{
+    io::{self, stdout},
+    process::{Command, Stdio},
+    thread,
+};
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -122,13 +126,17 @@ fn run_loop(
                 KeyCode::Char('2') => state.screen = Screen::Portfolios,
                 KeyCode::Char('3') => open_transactions_default(&mut state),
                 KeyCode::Char('b') => cycle_base_currency(data),
+                KeyCode::Char('v') => open_selected_asset_in_tradingview(data, &report, &state),
+                KeyCode::Char('t') => open_transactions_from_selection(&mut state, &report),
                 KeyCode::Tab if matches!(state.screen, Screen::Portfolios) => {
                     toggle_portfolio_focus(&mut state)
                 }
                 KeyCode::Tab if matches!(state.screen, Screen::Transactions) => {
                     toggle_transaction_pane_focus(&mut state)
                 }
-                KeyCode::Enter => drill_down(&mut state, &report, data),
+                KeyCode::Enter if matches!(state.screen, Screen::Transactions) => {
+                    open_filter_popup(&mut state, data)
+                }
                 KeyCode::Up | KeyCode::Char('k') => select_previous_row(&mut state, &report),
                 KeyCode::Down | KeyCode::Char('j') => select_next_row(&mut state, &report, data),
                 _ => {}
@@ -151,7 +159,7 @@ fn render(frame: &mut Frame, report: &Report, data: &StoreData, state: &AppState
         Screen::Transactions => render_transactions(frame, data, state, body),
     }
     frame.render_widget(
-        " 1 Home  2 Portfolios  3 Transactions  Enter Open/Select  Esc Close Popup  Tab Switch  ↑/↓ Navigate  b Base  q Quit "
+        " 1 Home  2 Portfolios  3 Transactions  t Open Tx  ↑/↓ Navigate  b Base  v Chart  q Quit "
             .dim(),
         footer,
     );
@@ -771,6 +779,113 @@ fn cycle_base_currency(data: &mut StoreData) {
     data.config.selected_base_currency = currencies[(current + 1) % currencies.len()].clone();
 }
 
+fn open_selected_asset_in_tradingview(data: &StoreData, report: &Report, state: &AppState) {
+    let Some(asset) = selected_tradingview_asset(data, report, state) else {
+        return;
+    };
+    open_asset_in_tradingview(asset);
+}
+
+fn selected_tradingview_asset<'a>(
+    data: &'a StoreData,
+    report: &'a Report,
+    state: &AppState,
+) -> Option<&'a Asset> {
+    let asset_id = match state.screen {
+        Screen::Home => report
+            .holdings
+            .get(state.selected_home_holding)
+            .map(|holding| holding.asset_id),
+        Screen::Portfolios if state.portfolio_focus == PortfolioFocus::Holdings => {
+            selected_portfolio_holdings(state, report)
+                .get(state.selected_portfolio_holding)
+                .map(|holding| holding.asset_id)
+        }
+        Screen::Portfolios => None,
+        Screen::Transactions if state.transaction_focus == TransactionFocus::Asset => {
+            state.transaction_asset_filter
+        }
+        Screen::Transactions if state.transaction_focus == TransactionFocus::Table => {
+            filtered_transactions(data, state)
+                .get(state.selected_transaction)
+                .map(|transaction| selected_transaction_asset_id(state, transaction))
+        }
+        Screen::Transactions => None,
+    }?;
+    asset_by_id(data, asset_id)
+}
+
+fn selected_transaction_asset_id(state: &AppState, transaction: &Transaction) -> Id {
+    if let Some(asset_id) = state.transaction_asset_filter {
+        if asset_matches(transaction, Some(asset_id), AssetScope::AnySide) {
+            return asset_id;
+        }
+    }
+    transaction.base_asset_id
+}
+
+fn open_filter_popup_asset_in_tradingview(data: &StoreData, state: &AppState, popup: FilterPopup) {
+    if popup != FilterPopup::Asset || state.selected_filter_value == 0 {
+        return;
+    }
+    let Some(asset) = data.assets.get(state.selected_filter_value - 1) else {
+        return;
+    };
+    open_asset_in_tradingview(asset);
+}
+
+fn open_asset_in_tradingview(asset: &Asset) {
+    let Some(symbol) = asset.tradingview_symbol.clone() else {
+        return;
+    };
+    let url = tradingview_chart_url(&symbol);
+    thread::spawn(move || {
+        let mut command = open_url_command(&url);
+        let result = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        match result {
+            Ok(status) if status.success() => {}
+            Ok(status) => tracing::warn!(symbol, ?status, "could not open TradingView chart"),
+            Err(error) => tracing::warn!(symbol, %error, "could not open TradingView chart"),
+        }
+    });
+}
+
+fn tradingview_chart_url(symbol: &str) -> String {
+    format!(
+        "https://www.tradingview.com/chart/?symbol={}",
+        urlencoding::encode(symbol)
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn open_url_command(url: &str) -> Command {
+    let mut command = Command::new("open");
+    command.arg(url);
+    command
+}
+
+#[cfg(target_os = "windows")]
+fn open_url_command(url: &str) -> Command {
+    let mut command = Command::new("cmd");
+    command.args(["/C", "start", "", url]);
+    command
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_url_command(url: &str) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(url);
+    command
+}
+
+fn asset_by_id(data: &StoreData, asset_id: Id) -> Option<&Asset> {
+    data.assets.iter().find(|asset| asset.id == asset_id)
+}
+
 fn handle_popup_key(state: &mut AppState, data: &StoreData, key: KeyCode) -> bool {
     let Some(popup) = state.filter_popup else {
         return false;
@@ -784,6 +899,7 @@ fn handle_popup_key(state: &mut AppState, data: &StoreData, key: KeyCode) -> boo
             let len = filter_options(data, popup).len();
             select_next_index(&mut state.selected_filter_value, len);
         }
+        KeyCode::Char('v') => open_filter_popup_asset_in_tradingview(data, state, popup),
         KeyCode::Enter => select_filter_popup_value(state, data, popup),
         _ => {}
     }
@@ -892,7 +1008,7 @@ fn previous_transaction_filter_focus(state: &mut AppState) {
     };
 }
 
-fn drill_down(state: &mut AppState, report: &Report, data: &StoreData) {
+fn open_transactions_from_selection(state: &mut AppState, report: &Report) {
     match state.screen {
         Screen::Home => {
             let Some(holding) = report.holdings.get(state.selected_home_holding) else {
@@ -916,7 +1032,7 @@ fn drill_down(state: &mut AppState, report: &Report, data: &StoreData) {
             };
             open_transactions_for_holding(state, holding.portfolio_id, holding.asset_id);
         }
-        Screen::Transactions => open_filter_popup(state, data),
+        Screen::Transactions => {}
     }
 }
 
@@ -1157,4 +1273,64 @@ fn display_quantity_is_negative(holding: &crate::accounting::HoldingRow) -> bool
 fn display_value_is_negative(holding: &crate::accounting::HoldingRow) -> bool {
     matches!(holding.kind, crate::model::AssetKind::Liability)
         && holding.value.map(|value| !value.is_zero()).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use rust_decimal::Decimal;
+
+    use super::*;
+    use crate::model::{LedgerEffect, TransactionKind};
+
+    #[test]
+    fn tradingview_chart_url_encodes_symbol() {
+        assert_eq!(
+            tradingview_chart_url("NASDAQ:BYND"),
+            "https://www.tradingview.com/chart/?symbol=NASDAQ%3ABYND"
+        );
+    }
+
+    #[test]
+    fn transaction_shortcut_prefers_filtered_quote_asset() {
+        let mut state = AppState::default();
+        state.transaction_asset_filter = Some(2);
+        let transaction = transaction_with_assets(1, Some(2), None);
+
+        assert_eq!(selected_transaction_asset_id(&state, &transaction), 2);
+    }
+
+    #[test]
+    fn transaction_shortcut_falls_back_to_base_asset() {
+        let state = AppState::default();
+        let transaction = transaction_with_assets(1, Some(2), None);
+
+        assert_eq!(selected_transaction_asset_id(&state, &transaction), 1);
+    }
+
+    fn transaction_with_assets(
+        base_asset_id: Id,
+        quote_asset_id: Option<Id>,
+        fee_asset_id: Option<Id>,
+    ) -> Transaction {
+        Transaction {
+            id: 1,
+            portfolio_id: 1,
+            timestamp: Utc::now(),
+            kind: TransactionKind::Buy,
+            base_asset_id,
+            base_amount: Decimal::ONE,
+            base_ledger_effect: LedgerEffect::Post,
+            quote_asset_id,
+            quote_amount: Some(Decimal::ONE),
+            quote_ledger_effect: LedgerEffect::Post,
+            fee_asset_id,
+            fee_amount: None,
+            exchange: None,
+            broker: None,
+            notes: None,
+            source: "test".into(),
+            source_row_hash: "test".into(),
+        }
+    }
 }

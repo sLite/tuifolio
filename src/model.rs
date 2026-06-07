@@ -45,7 +45,29 @@ pub struct Asset {
     #[serde(default)]
     pub yahoo_symbol: Option<String>,
     #[serde(default)]
+    pub tradingview_symbol: Option<String>,
+    #[serde(default)]
     pub valuation_currency: Option<String>,
+}
+
+pub fn default_tradingview_symbol(symbol: &str, kind: AssetKind) -> Option<String> {
+    match kind {
+        AssetKind::Crypto => Some(format!("CRYPTO:{symbol}USD")),
+        AssetKind::Commodity => match symbol {
+            "GOLD" => Some("OANDA:XAUUSD".into()),
+            _ => None,
+        },
+        AssetKind::Stock | AssetKind::Fund => match symbol {
+            "GME" => Some("NYSE:GME".into()),
+            "BYND" => Some("NASDAQ:BYND".into()),
+            "INTC" => Some("NASDAQ:INTC".into()),
+            "VWCE.DE" => Some("XETR:VWCE".into()),
+            "EI4.F" => Some("FWB:EI4".into()),
+            "639.DE" => Some("XETR:639".into()),
+            _ => None,
+        },
+        AssetKind::Fiat | AssetKind::Custom | AssetKind::Property | AssetKind::Liability => None,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

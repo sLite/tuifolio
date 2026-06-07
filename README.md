@@ -49,11 +49,13 @@ cargo run -- base BTC
 - `1`: Home
 - `2`: Portfolios
 - `3`: Transactions
-- `Enter`: open transactions, open a focused transaction filter, or select a popup value
+- `t`: open transactions for the selected portfolio or holding
+- `Enter`: open a focused transaction filter or select a popup value
 - `Esc`: close an open transaction filter popup
 - `Tab`: switch panes
 - `↑/↓`, `j/k`: navigate rows, transaction filters, or popup values
 - `b`: cycle configured base currencies
+- `v`: open the selected asset's TradingView chart when a chart symbol is configured
 - `q`: quit
 
 ## Notes

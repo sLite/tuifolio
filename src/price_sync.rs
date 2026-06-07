@@ -221,6 +221,7 @@ mod tests {
             name: "Gold".into(),
             kind: AssetKind::Commodity,
             yahoo_symbol: Some("GC=F".into()),
+            tradingview_symbol: Some("OANDA:XAUUSD".into()),
             valuation_currency: None,
         };
         assert_eq!(yahoo_market_symbol(&asset), "GC=F");

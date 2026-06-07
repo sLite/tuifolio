@@ -11,6 +11,65 @@ use tuifolio::{
 };
 
 #[test]
+fn imports_tradingview_symbols_for_known_assets() {
+    let mut store = temp_store();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
+    import_delta_dir(&mut store, &dir).unwrap();
+
+    assert_tradingview_symbol(&store, "BTC", "CRYPTO:BTCUSD");
+    assert_tradingview_symbol(&store, "GOLD", "OANDA:XAUUSD");
+    assert_tradingview_symbol(&store, "GME", "NYSE:GME");
+    assert_tradingview_symbol(&store, "BYND", "NASDAQ:BYND");
+    assert_tradingview_symbol(&store, "INTC", "NASDAQ:INTC");
+    assert_tradingview_symbol(&store, "VWCE.DE", "XETR:VWCE");
+    assert_tradingview_symbol(&store, "EI4.F", "FWB:EI4");
+    assert_tradingview_symbol(&store, "639.DE", "XETR:639");
+}
+
+#[test]
+fn store_open_migrates_legacy_tradingview_symbols() {
+    let path = temp_store_path();
+    let legacy_store = serde_json::json!({
+        "config": {
+            "base_currencies": ["EUR", "USD", "BTC", "ETH"],
+            "default_base_currency": "EUR",
+            "selected_base_currency": "EUR",
+            "stock_splits": []
+        },
+        "next_id": 3,
+        "portfolios": [],
+        "assets": [
+            {
+                "id": 1,
+                "symbol": "GOLD",
+                "name": "Gold",
+                "kind": "Commodity",
+                "yahoo_symbol": "GC=F",
+                "valuation_currency": null
+            },
+            {
+                "id": 2,
+                "symbol": "GME",
+                "name": "GameStop Corp",
+                "kind": "Stock",
+                "yahoo_symbol": "GME",
+                "valuation_currency": null
+            }
+        ],
+        "transactions": [],
+        "ledger_entries": [],
+        "prices": [],
+        "raw_rows": {}
+    });
+    std::fs::write(&path, serde_json::to_string_pretty(&legacy_store).unwrap()).unwrap();
+
+    let store = Store::open(Some(path)).unwrap();
+
+    assert_tradingview_symbol(&store, "GOLD", "OANDA:XAUUSD");
+    assert_tradingview_symbol(&store, "GME", "NYSE:GME");
+}
+
+#[test]
 fn splits_delta_asset_labels() {
     assert_eq!(
         split_delta_asset("BTC (Bitcoin)"),
@@ -529,9 +588,33 @@ fn ledger_rebuild_fails_on_missing_posted_asset() {
 }
 
 fn temp_store() -> Store {
-    let path = std::env::temp_dir().join(format!("tuifolio-test-{}.json", std::process::id()));
+    let path = temp_store_path();
     if path.exists() {
         std::fs::remove_file(&path).unwrap();
     }
     Store::open(Some(path)).unwrap()
+}
+
+fn temp_store_path() -> std::path::PathBuf {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "tuifolio-test-{}-{suffix}.json",
+        std::process::id()
+    ))
+}
+
+fn assert_tradingview_symbol(store: &Store, symbol: &str, tradingview_symbol: &str) {
+    let asset = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.symbol == symbol)
+        .unwrap_or_else(|| panic!("missing asset {symbol}"));
+    assert_eq!(
+        asset.tradingview_symbol.as_deref(),
+        Some(tradingview_symbol)
+    );
 }

@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 
-use crate::model::{Asset, AssetKind, Id, Portfolio, StoreData};
+use crate::model::{Asset, AssetKind, Id, Portfolio, StoreData, default_tradingview_symbol};
 
 pub struct Store {
     path: PathBuf,
@@ -23,6 +23,7 @@ impl Store {
         let mut data: StoreData = serde_json::from_str(&content)
             .with_context(|| format!("failed to parse {}", path.display()))?;
         migrate_legacy_stock_splits(&mut data);
+        migrate_tradingview_symbols(&mut data);
         Ok(Self { path, data })
     }
 
@@ -57,7 +58,7 @@ impl Store {
     }
 
     pub fn asset_id(&mut self, symbol: &str, name: &str, kind: AssetKind) -> Id {
-        self.asset_id_with_metadata(symbol, name, kind, None, None)
+        self.asset_id_with_metadata(symbol, name, kind, None, None, None)
     }
 
     pub fn asset_id_with_yahoo_symbol(
@@ -67,7 +68,7 @@ impl Store {
         kind: AssetKind,
         yahoo_symbol: Option<String>,
     ) -> Id {
-        self.asset_id_with_metadata(symbol, name, kind, yahoo_symbol, None)
+        self.asset_id_with_metadata(symbol, name, kind, yahoo_symbol, None, None)
     }
 
     pub fn asset_id_with_metadata(
@@ -76,6 +77,7 @@ impl Store {
         name: &str,
         kind: AssetKind,
         yahoo_symbol: Option<String>,
+        tradingview_symbol: Option<String>,
         valuation_currency: Option<String>,
     ) -> Id {
         if let Some(asset) = self
@@ -86,6 +88,9 @@ impl Store {
         {
             if yahoo_symbol.is_some() {
                 asset.yahoo_symbol = yahoo_symbol;
+            }
+            if tradingview_symbol.is_some() {
+                asset.tradingview_symbol = tradingview_symbol;
             }
             if valuation_currency.is_some() {
                 asset.valuation_currency = valuation_currency;
@@ -99,6 +104,7 @@ impl Store {
             name: name.to_string(),
             kind,
             yahoo_symbol,
+            tradingview_symbol,
             valuation_currency,
         });
         id
@@ -106,6 +112,14 @@ impl Store {
 
     pub fn asset_by_symbol(&self, symbol: &str) -> Option<&Asset> {
         self.data.assets.iter().find(|a| a.symbol == symbol)
+    }
+}
+
+fn migrate_tradingview_symbols(data: &mut StoreData) {
+    for asset in &mut data.assets {
+        if asset.tradingview_symbol.is_none() {
+            asset.tradingview_symbol = default_tradingview_symbol(&asset.symbol, asset.kind);
+        }
     }
 }
 

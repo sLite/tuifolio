@@ -84,6 +84,19 @@ fn rebuild_command(store: &mut Store, dir: PathBuf) -> anyhow::Result<()> {
 }
 
 fn tui_command(store: &mut Store) -> anyhow::Result<()> {
+    match sync_free_crypto_prices(store) {
+        Ok(summary) => {
+            tracing::info!(
+                updated = summary.updated,
+                unsupported = summary.unsupported,
+                "synced prices before starting TUI"
+            );
+            store.save()?;
+        }
+        Err(error) => {
+            tracing::warn!(%error, "could not sync prices before starting TUI");
+        }
+    }
     tui::run(&mut store.data)?;
     store.save()
 }
