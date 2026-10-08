@@ -1,9 +1,11 @@
 pub mod accounting;
+pub mod assets;
 pub mod formatting;
 pub mod importer;
 pub mod ledger;
 pub mod model;
+pub mod portfolios;
 pub mod price_sync;
 pub mod store;
 pub mod transactions;
-pub mod tui;
+pub mod web;

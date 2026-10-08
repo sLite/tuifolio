@@ -6,12 +6,12 @@ use rust_decimal::Decimal;
 use tuifolio::accounting::build_report;
 use tuifolio::formatting::money;
 use tuifolio::importer::import_delta_dir;
-use tuifolio::price_sync::{add_manual_price, sync_free_crypto_prices};
+use tuifolio::price_sync::{add_manual_price, sync_prices};
 use tuifolio::store::Store;
-use tuifolio::tui;
+use tuifolio::web;
 
 #[derive(Parser)]
-#[command(version, about = "Local-first Delta-style portfolio TUI")]
+#[command(version, about = "Local-first portfolio tracker with a web interface")]
 struct Cli {
     #[arg(long)]
     store: Option<PathBuf>,
@@ -29,7 +29,10 @@ enum Command {
         #[arg(default_value = "delta-exports")]
         dir: PathBuf,
     },
-    Tui,
+    Web {
+        #[arg(long, default_value_t = 3000)]
+        port: u16,
+    },
     Summary,
     Holding {
         symbol: String,
@@ -52,10 +55,10 @@ fn main() -> anyhow::Result<()> {
         .init();
     let cli = Cli::parse();
     let mut store = Store::open(cli.store)?;
-    match cli.command.unwrap_or(Command::Tui) {
+    match cli.command.unwrap_or(Command::Web { port: 3000 }) {
         Command::Import { dir } => import_command(&mut store, dir)?,
         Command::Rebuild { dir } => rebuild_command(&mut store, dir)?,
-        Command::Tui => tui_command(&mut store)?,
+        Command::Web { port } => return web::run(store, port),
         Command::Summary => summary_command(&store),
         Command::Holding { symbol } => holding_command(&store, &symbol),
         Command::MissingPrices => missing_prices_command(&store),
@@ -81,24 +84,6 @@ fn import_command(store: &mut Store, dir: PathBuf) -> anyhow::Result<()> {
 fn rebuild_command(store: &mut Store, dir: PathBuf) -> anyhow::Result<()> {
     store.reset();
     import_command(store, dir)
-}
-
-fn tui_command(store: &mut Store) -> anyhow::Result<()> {
-    match sync_free_crypto_prices(store) {
-        Ok(summary) => {
-            tracing::info!(
-                updated = summary.updated,
-                unsupported = summary.unsupported,
-                "synced prices before starting TUI"
-            );
-            store.save()?;
-        }
-        Err(error) => {
-            tracing::warn!(%error, "could not sync prices before starting TUI");
-        }
-    }
-    tui::run(store)?;
-    store.save()
 }
 
 fn summary_command(store: &Store) {
@@ -151,10 +136,10 @@ fn holding_command(store: &Store, symbol: &str) {
 }
 
 fn sync_prices_command(store: &mut Store) -> anyhow::Result<()> {
-    let summary = sync_free_crypto_prices(store)?;
+    let summary = sync_prices(store)?;
     store.save()?;
     println!(
-        "prices updated {}, unsupported crypto assets {}",
+        "prices updated {}, unsupported assets {}",
         summary.updated, summary.unsupported
     );
     Ok(())

@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">Balance sheet</p><h1>Overview</h1><p class="description">Current holdings valued in {{ common.base }}.</p></div><a class="button primary" href="/transactions/new"><span aria-hidden="true">+</span> Add transaction</a></div>
+<section class="metrics" aria-label="Portfolio totals">
+  <div class="metric net-worth"><span class="metric-label">Net worth</span><strong>{{ summary.net.text }}</strong><span class="metric-note">{{ common.base }} · assets less liabilities</span></div>
+  <div class="metric"><span class="metric-label">Assets</span><strong>{{ summary.assets.text }}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Liabilities</span><strong>{{ summary.liabilities.text }}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Unrealized PnL</span><strong class="{{ summary.pnl.tone }}">{{ summary.pnl.text }}</strong><span class="metric-note">{{ common.base }} · where cost basis is available</span></div>
+</section>
+{% if summary.missing > 0 %}<div class="notice warning"><span>{{ summary.missing }} holdings have no valuation. Totals exclude these holdings.</span><a href="/assets">Review assets →</a></div>{% endif %}
+{% if summary.negative > 0 %}<div class="notice warning">{{ summary.negative }} non-liability holdings have negative balances. Check their ledger transactions.</div>{% endif %}
+{% if empty_store %}
+<section class="empty-state panel"><span class="eyebrow">Getting started</span><h2>Your ledger is empty</h2><p>Add your first transaction, or import your Delta CSV exports from the command line.</p><a class="button primary" href="/transactions/new">Add first transaction</a><details><summary>Import a Delta export</summary><p>Stop this server, run the import, then start the web interface again.</p><pre><code>cargo run -- import delta-exports
+cargo run -- web</code></pre></details></section>
+{% else %}
+<section class="panel">
+  <div class="panel-heading"><h2>Holdings <span class="count">{{ holdings.len() }}</span></h2><span class="muted">Sorted by value</span></div>
+  <form class="filters" action="/" method="get" hx-push-url="true">
+    <div class="field"><label for="holding-portfolio">Portfolio</label><select name="portfolio" id="holding-portfolio"><option value="">All portfolios</option>{% for option in portfolios %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
+    <label class="search-field">Search holdings<input type="search" name="search" value="{{ search }}" placeholder="Symbol, name or portfolio"></label>
+    <button class="button" type="submit">Apply</button><a class="text-link" href="/">Reset</a>
+  </form>
+  {% include "holdings.html" %}
+</section>
+{% endif %}
+{% endblock %}

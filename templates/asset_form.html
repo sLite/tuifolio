@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block content %}
+<a class="breadcrumb" href="/assets">← All assets</a>
+<div class="page-heading"><div><p class="eyebrow">Instrument settings</p><h1>{{ common.title }}</h1><p class="description">{% if let Some(id) = id %}{{ form.symbol }} · Asset #{{ id }}{% else %}Configure an asset before recording its first transaction.{% endif %}</p></div>{% if let Some(id) = id %}<a class="button" href="/transactions/new?asset={{ id }}">+ Add transaction</a>{% endif %}</div>
+{% if !notice.is_empty() %}<div class="notice success" role="status">{{ notice }}</div>{% endif %}
+<div class="assets-layout">
+  <form class="editor panel" action="{% if let Some(id) = id %}/assets/{{ id }}{% else %}/assets/new{% endif %}" method="post" hx-disabled-elt="find button[type='submit']">
+    {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+    <fieldset><legend><span class="section-number">01</span> Identity</legend><div class="form-grid">
+      <label>Symbol<input name="symbol" value="{{ form.symbol }}" placeholder="e.g. AAPL" required maxlength="100" {% if id.is_some() %}readonly aria-describedby="asset-symbol-help"{% endif %}></label>
+      <div class="field"><label for="asset-type">Asset type</label><select name="kind" id="asset-type">{% for option in kinds %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %} {% if currency_locked && option.value != "Fiat" && option.value != "Crypto" %}disabled{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
+      <label class="full-width">Name <span class="optional">optional</span><input name="name" value="{{ form.name }}" placeholder="Defaults to the symbol" maxlength="200"></label>
+    </div>{% if id.is_some() %}<p id="asset-symbol-help" class="field-help">The local symbol is fixed after creation. Set the Yahoo and TradingView symbols below to configure provider mappings.</p>{% endif %}
+    {% if currency_locked %}<p class="field-help">This asset is used as a currency, so its type must remain Cash or Crypto.</p>{% endif %}</fieldset>
+    <fieldset><legend><span class="section-number">02</span> Providers</legend><div class="form-grid">
+      <label>Yahoo symbol <span class="optional">optional</span><input name="yahoo_symbol" value="{{ form.yahoo_symbol }}" placeholder="e.g. AAPL or BTC-USD" maxlength="100" autocomplete="off" aria-describedby="yahoo-symbol-help"></label>
+      <label>TradingView symbol <span class="optional">optional</span><input name="tradingview_symbol" value="{{ form.tradingview_symbol }}" placeholder="e.g. NASDAQ:AAPL" maxlength="100" autocomplete="off" aria-describedby="chart-symbol-help"></label>
+    </div><p id="yahoo-symbol-help" class="field-help">Yahoo pricing supports stocks, funds, commodities, and crypto. Crypto symbols must quote in USD. Cash uses exchange rates. Leave the Yahoo symbol blank for manual market pricing.</p><p id="chart-symbol-help" class="field-help">TradingView uses an exchange-qualified symbol. These identifiers are saved as entered; they are not searched or verified against the providers.</p></fieldset>
+    <fieldset><legend><span class="section-number">03</span> Valuation</legend><label>Intrinsic valuation currency <span class="optional">optional</span><input name="valuation_currency" value="{{ form.valuation_currency }}" placeholder="Blank to use market prices" list="valuation-currencies" maxlength="100" aria-describedby="intrinsic-help"></label><p id="intrinsic-help" class="field-help">For property, liabilities, and custom assets only. Each unit of quantity equals one unit of this currency. For example, quantity 600000 valued intrinsically in EUR is worth 600000 EUR. This takes precedence over market prices.</p></fieldset>
+    <div class="form-actions"><a class="button" href="/assets">Cancel</a><button class="button primary" type="submit">Save asset</button></div>
+    <datalist id="valuation-currencies">{% for currency in common.currencies %}<option value="{{ currency }}"></option>{% endfor %}</datalist>
+  </form>
+  <aside>
+    {% if let Some(id) = id %}
+    <section class="panel asset-context"><h2>Related records</h2><a class="context-link" href="/transactions?asset={{ id }}&scope=any">{{ transactions }} transactions <span aria-hidden="true">→</span></a><a class="context-link" href="/assets?asset={{ id }}#manual-price">Set a manual price <span aria-hidden="true">→</span></a>{% if let Some(url) = chart_url %}<a class="context-link" href="{{ url }}" target="_blank" rel="noopener noreferrer" hx-boost="false">TradingView chart <span aria-hidden="true">↗</span></a>{% endif %}</section>
+    <section class="panel asset-context recorded-prices"><h2>Latest recorded prices</h2>{% for price in quotes %}<div class="quote-line {% if price.missing %}warning-text{% endif %}">{{ price.value }} <span class="muted">{{ price.currency }}</span><span class="cell-subtitle">{{ price.source }}</span><span class="cell-subtitle">{{ price.timestamp }}</span></div>{% endfor %}</section>
+    <p class="aside-note">Edits keep this asset's ID. Transactions, ledger quantities, prices, and stock splits remain linked to it.</p>
+    {% else %}<section class="panel asset-context"><h2>Asset setup</h2><p class="description">Your local symbol identifies the asset in this ledger. Provider symbols identify the instrument on Yahoo and TradingView.</p><p class="description">After saving, add a transaction to record a holding, or set a manual price from the asset directory.</p></section>{% endif %}
+  </aside>
+</div>
+{% endblock %}

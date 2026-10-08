@@ -48,6 +48,30 @@ pub struct Asset {
     pub tradingview_symbol: Option<String>,
     #[serde(default)]
     pub valuation_currency: Option<String>,
+    #[serde(default)]
+    pub metadata_source: AssetMetadataSource,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AssetMetadataSource {
+    #[default]
+    Automatic,
+    User,
+}
+
+impl Asset {
+    pub fn yahoo_quote_symbol(&self) -> Option<&str> {
+        match self.kind {
+            AssetKind::Crypto => self.yahoo_symbol.as_deref(),
+            AssetKind::Stock | AssetKind::Fund | AssetKind::Commodity => {
+                self.yahoo_symbol.as_deref().or_else(|| {
+                    (self.metadata_source == AssetMetadataSource::Automatic)
+                        .then_some(self.symbol.as_str())
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 pub fn default_tradingview_symbol(symbol: &str, kind: AssetKind) -> Option<String> {

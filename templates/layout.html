@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  {% include "head.html" %}
+  <title>{{ common.title }} · Tuifolio</title>
+</head>
+<body hx-boost="true" hx-target="#app" hx-select="#app" hx-swap="outerHTML" hx-indicator="#loading" hx-history="false">
+  <a class="skip-link" href="#content" hx-boost="false">Skip to content</a>
+  <div id="loading" class="loading-line" role="status" aria-label="Loading"></div>
+  <div id="app">
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="/" aria-label="Tuifolio overview"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>tuifolio<span class="local-label">local ledger</span></a>
+        <nav aria-label="Main navigation">
+          <a href="/" {% if common.section == "overview" %}aria-current="page"{% endif %}>Overview</a>
+          <a href="/portfolios" {% if common.section == "portfolios" %}aria-current="page"{% endif %}>Portfolios</a>
+          <a href="/transactions" {% if common.section == "transactions" %}aria-current="page"{% endif %}>Transactions</a>
+          <a href="/assets" {% if common.section == "assets" %}aria-current="page"{% endif %}>Assets</a>
+        </nav>
+        <form action="/base" method="post" class="base-form" hx-disabled-elt="find button">
+          <label for="base-currency">Base</label>
+          <select id="base-currency" name="currency" data-submit-on-change>
+            {% for currency in common.currencies %}<option value="{{ currency }}" {% if currency.as_str() == common.base.as_str() %}selected{% endif %}>{{ currency }}</option>{% endfor %}
+          </select>
+          <input type="hidden" name="return_to" value="{{ common.return_to }}">
+          <button class="button compact" type="submit">Set</button>
+        </form>
+      </div>
+    </header>
+    <main id="content" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="site-footer"><span><span class="status-dot" aria-hidden="true"></span>Local datastore</span><span>Values in {{ common.base }} · PnL derived from the ledger</span></footer>
+  </div>
+</body>
+</html>

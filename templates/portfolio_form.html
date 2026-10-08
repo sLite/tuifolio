@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+<a class="breadcrumb" href="/portfolios">← All portfolios</a>
+<div class="page-heading"><div><p class="eyebrow">New account</p><h1>Create portfolio</h1><p class="description">Create a portfolio before assigning transactions to it.</p></div></div>
+<form class="editor panel portfolio-editor" action="/portfolios/new" method="post" hx-disabled-elt="find button[type='submit']">
+  {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+  <label>Portfolio name<input name="name" value="{{ form.name }}" placeholder="e.g. Long-term investments" required maxlength="200" autofocus></label>
+  <p class="field-help">Names must be unique. The new portfolio starts empty; add transactions to record its holdings.</p>
+  <div class="form-actions"><a class="button" href="/portfolios">Cancel</a><button class="button primary" type="submit">Create portfolio</button></div>
+</form>
+{% endblock %}
