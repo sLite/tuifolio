@@ -5,4 +5,5 @@ pub mod ledger;
 pub mod model;
 pub mod price_sync;
 pub mod store;
+pub mod transactions;
 pub mod tui;

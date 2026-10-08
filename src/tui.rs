@@ -21,7 +21,11 @@ use ratatui::{
 use crate::{
     accounting::{Report, build_report},
     formatting::{money, quantity as format_quantity},
-    model::{Asset, Id, Portfolio, StoreData, Transaction},
+    model::{
+        Asset, AssetKind, Id, LedgerEffect, Portfolio, StoreData, Transaction, TransactionKind,
+    },
+    store::Store,
+    transactions::{ManualTransactionInput, add_manual_transaction},
 };
 
 #[derive(Clone, Copy)]
@@ -58,6 +62,65 @@ enum FilterPopup {
     Scope,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TransactionEditorField {
+    Portfolio,
+    Kind,
+    Symbol,
+    Name,
+    AssetKind,
+    Quantity,
+    QuoteSymbol,
+    QuoteAmount,
+    CashEffect,
+    FeeSymbol,
+    FeeAmount,
+    Exchange,
+    Broker,
+    Notes,
+    Timestamp,
+    Submit,
+}
+
+struct TransactionEditorState {
+    focus: TransactionEditorField,
+    portfolio: String,
+    kind: TransactionKind,
+    symbol: String,
+    name: String,
+    asset_kind: AssetKind,
+    quantity: String,
+    quote_symbol: String,
+    quote_amount: String,
+    cash_effect: LedgerEffect,
+    fee_symbol: String,
+    fee_amount: String,
+    exchange: String,
+    broker: String,
+    notes: String,
+    timestamp: String,
+    error: Option<String>,
+}
+
+const EDITOR_FIELDS: [TransactionEditorField; 16] = [
+    TransactionEditorField::Portfolio,
+    TransactionEditorField::Kind,
+    TransactionEditorField::Symbol,
+    TransactionEditorField::Name,
+    TransactionEditorField::AssetKind,
+    TransactionEditorField::Quantity,
+    TransactionEditorField::QuoteSymbol,
+    TransactionEditorField::QuoteAmount,
+    TransactionEditorField::CashEffect,
+    TransactionEditorField::FeeSymbol,
+    TransactionEditorField::FeeAmount,
+    TransactionEditorField::Exchange,
+    TransactionEditorField::Broker,
+    TransactionEditorField::Notes,
+    TransactionEditorField::Timestamp,
+    TransactionEditorField::Submit,
+];
+
 struct AppState {
     screen: Screen,
     selected_portfolio: usize,
@@ -71,6 +134,7 @@ struct AppState {
     filter_popup: Option<FilterPopup>,
     selected_filter_value: usize,
     portfolio_focus: PortfolioFocus,
+    transaction_editor: Option<TransactionEditorState>,
 }
 
 impl Default for AppState {
@@ -88,16 +152,17 @@ impl Default for AppState {
             filter_popup: None,
             selected_filter_value: 0,
             portfolio_focus: PortfolioFocus::List,
+            transaction_editor: None,
         }
     }
 }
 
-pub fn run(data: &mut StoreData) -> io::Result<()> {
+pub fn run(store: &mut Store) -> io::Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
-    let result = run_loop(data, &mut terminal);
+    let result = run_loop(store, &mut terminal);
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
@@ -105,28 +170,34 @@ pub fn run(data: &mut StoreData) -> io::Result<()> {
 }
 
 fn run_loop(
-    data: &mut StoreData,
+    store: &mut Store,
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
 ) -> io::Result<()> {
     let mut state = AppState::default();
     loop {
-        let report = build_report(data);
-        clamp_state(&mut state, &report, data);
-        terminal.draw(|frame| render(frame, &report, data, &state))?;
+        let report = build_report(&store.data);
+        clamp_state(&mut state, &report, &store.data);
+        terminal.draw(|frame| render(frame, &report, &store.data, &state))?;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            if handle_popup_key(&mut state, data, key.code) {
+            if handle_transaction_editor_key(&mut state, store, &report, key.code) {
+                continue;
+            }
+            if handle_popup_key(&mut state, &store.data, key.code) {
                 continue;
             }
             match key.code {
                 KeyCode::Char('q') => break Ok(()),
+                KeyCode::Char('a') => open_transaction_editor(&mut state, &store.data, &report),
                 KeyCode::Char('1') => state.screen = Screen::Home,
                 KeyCode::Char('2') => state.screen = Screen::Portfolios,
                 KeyCode::Char('3') => open_transactions_default(&mut state),
-                KeyCode::Char('b') => cycle_base_currency(data),
-                KeyCode::Char('v') => open_selected_asset_in_tradingview(data, &report, &state),
+                KeyCode::Char('b') => cycle_base_currency(&mut store.data),
+                KeyCode::Char('v') => {
+                    open_selected_asset_in_tradingview(&store.data, &report, &state)
+                }
                 KeyCode::Char('t') => open_transactions_from_selection(&mut state, &report),
                 KeyCode::Tab if matches!(state.screen, Screen::Portfolios) => {
                     toggle_portfolio_focus(&mut state)
@@ -135,10 +206,12 @@ fn run_loop(
                     toggle_transaction_pane_focus(&mut state)
                 }
                 KeyCode::Enter if matches!(state.screen, Screen::Transactions) => {
-                    open_filter_popup(&mut state, data)
+                    open_filter_popup(&mut state, &store.data)
                 }
                 KeyCode::Up | KeyCode::Char('k') => select_previous_row(&mut state, &report),
-                KeyCode::Down | KeyCode::Char('j') => select_next_row(&mut state, &report, data),
+                KeyCode::Down | KeyCode::Char('j') => {
+                    select_next_row(&mut state, &report, &store.data)
+                }
                 _ => {}
             }
         }
@@ -159,10 +232,13 @@ fn render(frame: &mut Frame, report: &Report, data: &StoreData, state: &AppState
         Screen::Transactions => render_transactions(frame, data, state, body),
     }
     frame.render_widget(
-        " 1 Home  2 Portfolios  3 Transactions  t Open Tx  ↑/↓ Navigate  b Base  v Chart  q Quit "
+        " 1 Home  2 Portfolios  3 Transactions  a Add Tx  t Open Tx  ↑/↓ Navigate  b Base  v Chart  q Quit "
             .dim(),
         footer,
     );
+    if let Some(editor) = &state.transaction_editor {
+        render_transaction_editor(frame, editor, frame.area());
+    }
 }
 
 fn header_widget(report: &Report) -> Paragraph<'static> {
@@ -410,6 +486,146 @@ fn render_filter_popup(
             .block(panel(filter_popup_title(popup), true)),
         popup_area,
     );
+}
+
+fn render_transaction_editor(frame: &mut Frame, editor: &TransactionEditorState, area: Rect) {
+    let popup_area = centered_rect(area, 82, 86);
+    let mut lines = vec![
+        editor_line(
+            editor,
+            TransactionEditorField::Portfolio,
+            "Portfolio",
+            &editor.portfolio,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Kind,
+            "Type",
+            transaction_kind_label(editor.kind),
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Symbol,
+            "Asset symbol",
+            &editor.symbol,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Name,
+            "Asset name",
+            &editor.name,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::AssetKind,
+            "Asset kind",
+            asset_kind_label(editor.asset_kind),
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Quantity,
+            "Quantity",
+            &editor.quantity,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::QuoteSymbol,
+            "Quote currency",
+            &editor.quote_symbol,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::QuoteAmount,
+            "Quote amount",
+            &editor.quote_amount,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::CashEffect,
+            "Cash effect",
+            ledger_effect_label(editor.cash_effect),
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::FeeSymbol,
+            "Fee currency",
+            &editor.fee_symbol,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::FeeAmount,
+            "Fee amount",
+            &editor.fee_amount,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Exchange,
+            "Exchange",
+            &editor.exchange,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Broker,
+            "Broker",
+            &editor.broker,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Notes,
+            "Notes",
+            &editor.notes,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Timestamp,
+            "Timestamp",
+            &editor.timestamp,
+        ),
+        editor_line(
+            editor,
+            TransactionEditorField::Submit,
+            "Action",
+            "Add transaction",
+        ),
+        Line::from(""),
+        Line::from("Tab moves, Enter cycles/submits, Esc cancels".dim()),
+    ];
+    if let Some(error) = &editor.error {
+        lines.push(Line::from(vec![
+            Span::styled(
+                "Error: ",
+                Style::new()
+                    .fg(Color::LightRed)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(error.clone(), Style::new().fg(Color::LightRed)),
+        ]));
+    }
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(
+        Paragraph::new(lines).block(panel("Add Transaction", true)),
+        popup_area,
+    );
+}
+
+fn editor_line(
+    editor: &TransactionEditorState,
+    field: TransactionEditorField,
+    label: &'static str,
+    value: &str,
+) -> Line<'static> {
+    let value_style = if editor.focus == field {
+        Style::new()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::new().fg(Color::White)
+    };
+    Line::from(vec![
+        Span::styled(format!("{label:>14}: "), Style::new().fg(Color::Gray)),
+        Span::styled(format!(" {value} "), value_style),
+    ])
 }
 
 fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
@@ -1092,6 +1308,306 @@ fn open_transactions_default(state: &mut AppState) {
     state.transaction_asset_scope = AssetScope::Primary;
     state.transaction_focus = TransactionFocus::Table;
     state.selected_transaction = 0;
+}
+
+fn open_transaction_editor(state: &mut AppState, data: &StoreData, report: &Report) {
+    let portfolio = editor_context_portfolio(state, data, report).unwrap_or_else(|| {
+        data.portfolios
+            .first()
+            .map(|portfolio| portfolio.name.clone())
+            .unwrap_or_else(|| "Default".into())
+    });
+    let asset = editor_context_asset(state, data, report);
+    state.transaction_editor = Some(TransactionEditorState {
+        focus: TransactionEditorField::Portfolio,
+        portfolio,
+        kind: TransactionKind::Buy,
+        symbol: asset.map(|asset| asset.symbol.clone()).unwrap_or_default(),
+        name: asset.map(|asset| asset.name.clone()).unwrap_or_default(),
+        asset_kind: asset.map(|asset| asset.kind).unwrap_or(AssetKind::Stock),
+        quantity: String::new(),
+        quote_symbol: data.config.selected_base_currency.clone(),
+        quote_amount: String::new(),
+        cash_effect: LedgerEffect::Ignore,
+        fee_symbol: String::new(),
+        fee_amount: String::new(),
+        exchange: String::new(),
+        broker: String::new(),
+        notes: String::new(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        error: None,
+    });
+}
+
+fn editor_context_portfolio(state: &AppState, data: &StoreData, report: &Report) -> Option<String> {
+    match state.screen {
+        Screen::Home => report
+            .holdings
+            .get(state.selected_home_holding)
+            .map(|holding| holding.portfolio.clone()),
+        Screen::Portfolios => report
+            .portfolios
+            .get(state.selected_portfolio)
+            .map(|portfolio| portfolio.name.clone()),
+        Screen::Transactions => selected_filter_portfolio(data, state).map(|p| p.name.clone()),
+    }
+}
+
+fn editor_context_asset<'a>(
+    state: &AppState,
+    data: &'a StoreData,
+    report: &'a Report,
+) -> Option<&'a Asset> {
+    let asset_id = match state.screen {
+        Screen::Home => report
+            .holdings
+            .get(state.selected_home_holding)
+            .map(|holding| holding.asset_id),
+        Screen::Portfolios if state.portfolio_focus == PortfolioFocus::Holdings => {
+            selected_portfolio_holdings(state, report)
+                .get(state.selected_portfolio_holding)
+                .map(|holding| holding.asset_id)
+        }
+        Screen::Transactions => state.transaction_asset_filter,
+        Screen::Portfolios => None,
+    }?;
+    asset_by_id(data, asset_id)
+}
+
+fn handle_transaction_editor_key(
+    state: &mut AppState,
+    store: &mut Store,
+    _report: &Report,
+    key: KeyCode,
+) -> bool {
+    if state.transaction_editor.is_none() {
+        return false;
+    }
+    match key {
+        KeyCode::Esc => state.transaction_editor = None,
+        KeyCode::Tab => focus_next_editor_field(state.transaction_editor.as_mut().unwrap()),
+        KeyCode::BackTab => focus_previous_editor_field(state.transaction_editor.as_mut().unwrap()),
+        KeyCode::Enter => handle_editor_enter(state, store),
+        KeyCode::Backspace => edit_editor_text(
+            state.transaction_editor.as_mut().unwrap(),
+            EditorEdit::Backspace,
+        ),
+        KeyCode::Char(ch) => edit_editor_text(
+            state.transaction_editor.as_mut().unwrap(),
+            EditorEdit::Insert(ch),
+        ),
+        _ => {}
+    }
+    true
+}
+
+fn handle_editor_enter(state: &mut AppState, store: &mut Store) {
+    let Some(editor) = state.transaction_editor.as_mut() else {
+        return;
+    };
+    match editor.focus {
+        TransactionEditorField::Kind => editor.kind = next_transaction_kind(editor.kind),
+        TransactionEditorField::AssetKind => editor.asset_kind = next_asset_kind(editor.asset_kind),
+        TransactionEditorField::CashEffect => {
+            editor.cash_effect = next_ledger_effect(editor.cash_effect)
+        }
+        TransactionEditorField::Submit => submit_transaction_editor(state, store),
+        _ => focus_next_editor_field(editor),
+    }
+}
+
+fn submit_transaction_editor(state: &mut AppState, store: &mut Store) {
+    let Some(editor) = state.transaction_editor.take() else {
+        return;
+    };
+    match editor_to_input(&editor).and_then(|input| add_manual_transaction(store, input)) {
+        Ok(result) => {
+            state.screen = Screen::Transactions;
+            state.transaction_portfolio_filter = Some(result.portfolio_id);
+            state.transaction_asset_filter = Some(result.asset_id);
+            state.transaction_asset_scope = AssetScope::Primary;
+            state.transaction_focus = TransactionFocus::Table;
+            state.selected_transaction = 0;
+        }
+        Err(error) => {
+            state.transaction_editor = Some(TransactionEditorState {
+                error: Some(error.to_string()),
+                ..editor
+            });
+        }
+    }
+}
+
+fn editor_to_input(editor: &TransactionEditorState) -> anyhow::Result<ManualTransactionInput> {
+    let timestamp =
+        chrono::DateTime::parse_from_rfc3339(editor.timestamp.trim())?.with_timezone(&chrono::Utc);
+    Ok(ManualTransactionInput {
+        portfolio_name: editor.portfolio.clone(),
+        timestamp,
+        kind: editor.kind,
+        asset_symbol: editor.symbol.clone(),
+        asset_name: editor.name.clone(),
+        asset_kind: editor.asset_kind,
+        base_amount: parse_required_decimal(&editor.quantity, "quantity")?,
+        quote_symbol: clean_editor_value(&editor.quote_symbol),
+        quote_amount: parse_optional_decimal(&editor.quote_amount, "quote amount")?,
+        quote_ledger_effect: editor.cash_effect,
+        fee_symbol: clean_editor_value(&editor.fee_symbol),
+        fee_amount: parse_optional_decimal(&editor.fee_amount, "fee amount")?,
+        exchange: clean_editor_value(&editor.exchange),
+        broker: clean_editor_value(&editor.broker),
+        notes: clean_editor_value(&editor.notes),
+    })
+}
+
+enum EditorEdit {
+    Insert(char),
+    Backspace,
+}
+
+fn edit_editor_text(editor: &mut TransactionEditorState, edit: EditorEdit) {
+    editor.error = None;
+    let Some(value) = focused_editor_text(editor) else {
+        return;
+    };
+    match edit {
+        EditorEdit::Insert(ch) if !ch.is_control() => value.push(ch),
+        EditorEdit::Backspace => {
+            value.pop();
+        }
+        EditorEdit::Insert(_) => {}
+    }
+}
+
+fn focused_editor_text(editor: &mut TransactionEditorState) -> Option<&mut String> {
+    match editor.focus {
+        TransactionEditorField::Portfolio => Some(&mut editor.portfolio),
+        TransactionEditorField::Symbol => Some(&mut editor.symbol),
+        TransactionEditorField::Name => Some(&mut editor.name),
+        TransactionEditorField::Quantity => Some(&mut editor.quantity),
+        TransactionEditorField::QuoteSymbol => Some(&mut editor.quote_symbol),
+        TransactionEditorField::QuoteAmount => Some(&mut editor.quote_amount),
+        TransactionEditorField::FeeSymbol => Some(&mut editor.fee_symbol),
+        TransactionEditorField::FeeAmount => Some(&mut editor.fee_amount),
+        TransactionEditorField::Exchange => Some(&mut editor.exchange),
+        TransactionEditorField::Broker => Some(&mut editor.broker),
+        TransactionEditorField::Notes => Some(&mut editor.notes),
+        TransactionEditorField::Timestamp => Some(&mut editor.timestamp),
+        TransactionEditorField::Kind
+        | TransactionEditorField::AssetKind
+        | TransactionEditorField::CashEffect
+        | TransactionEditorField::Submit => None,
+    }
+}
+
+fn focus_next_editor_field(editor: &mut TransactionEditorState) {
+    let index = editor_field_index(editor.focus);
+    editor.focus = EDITOR_FIELDS[(index + 1) % EDITOR_FIELDS.len()];
+}
+
+fn focus_previous_editor_field(editor: &mut TransactionEditorState) {
+    let index = editor_field_index(editor.focus);
+    editor.focus = EDITOR_FIELDS[(index + EDITOR_FIELDS.len() - 1) % EDITOR_FIELDS.len()];
+}
+
+fn editor_field_index(field: TransactionEditorField) -> usize {
+    EDITOR_FIELDS
+        .iter()
+        .position(|candidate| *candidate == field)
+        .unwrap_or(0)
+}
+
+fn parse_required_decimal(value: &str, label: &str) -> anyhow::Result<rust_decimal::Decimal> {
+    value
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid {label}: {value}"))
+}
+
+fn parse_optional_decimal(
+    value: &str,
+    label: &str,
+) -> anyhow::Result<Option<rust_decimal::Decimal>> {
+    if value.trim().is_empty() {
+        Ok(None)
+    } else {
+        parse_required_decimal(value, label).map(Some)
+    }
+}
+
+fn clean_editor_value(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.into())
+    }
+}
+
+fn next_transaction_kind(kind: TransactionKind) -> TransactionKind {
+    match kind {
+        TransactionKind::Buy => TransactionKind::Sell,
+        TransactionKind::Sell => TransactionKind::Deposit,
+        TransactionKind::Deposit => TransactionKind::Withdraw,
+        TransactionKind::Withdraw => TransactionKind::AssetIncrease,
+        TransactionKind::AssetIncrease => TransactionKind::AssetDecrease,
+        TransactionKind::AssetDecrease => TransactionKind::LiabilityIncrease,
+        TransactionKind::LiabilityIncrease => TransactionKind::LiabilityDecrease,
+        TransactionKind::LiabilityDecrease => TransactionKind::Buy,
+    }
+}
+
+fn next_asset_kind(kind: AssetKind) -> AssetKind {
+    match kind {
+        AssetKind::Stock => AssetKind::Fund,
+        AssetKind::Fund => AssetKind::Crypto,
+        AssetKind::Crypto => AssetKind::Commodity,
+        AssetKind::Commodity => AssetKind::Fiat,
+        AssetKind::Fiat => AssetKind::Property,
+        AssetKind::Property => AssetKind::Liability,
+        AssetKind::Liability => AssetKind::Custom,
+        AssetKind::Custom => AssetKind::Stock,
+    }
+}
+
+fn next_ledger_effect(effect: LedgerEffect) -> LedgerEffect {
+    match effect {
+        LedgerEffect::Ignore => LedgerEffect::Post,
+        LedgerEffect::Post => LedgerEffect::Ignore,
+    }
+}
+
+fn transaction_kind_label(kind: TransactionKind) -> &'static str {
+    match kind {
+        TransactionKind::Buy => "Buy",
+        TransactionKind::Sell => "Sell",
+        TransactionKind::Deposit => "Deposit",
+        TransactionKind::Withdraw => "Withdraw",
+        TransactionKind::AssetIncrease => "Asset increase",
+        TransactionKind::AssetDecrease => "Asset decrease",
+        TransactionKind::LiabilityIncrease => "Liability increase",
+        TransactionKind::LiabilityDecrease => "Liability decrease",
+    }
+}
+
+fn asset_kind_label(kind: AssetKind) -> &'static str {
+    match kind {
+        AssetKind::Fiat => "Fiat",
+        AssetKind::Crypto => "Crypto",
+        AssetKind::Stock => "Stock",
+        AssetKind::Fund => "Fund",
+        AssetKind::Commodity => "Commodity",
+        AssetKind::Property => "Property",
+        AssetKind::Custom => "Custom",
+        AssetKind::Liability => "Liability",
+    }
+}
+
+fn ledger_effect_label(effect: LedgerEffect) -> &'static str {
+    match effect {
+        LedgerEffect::Post => "Post cash movement",
+        LedgerEffect::Ignore => "Cost basis only",
+    }
 }
 
 fn select_previous_row(state: &mut AppState, _report: &Report) {

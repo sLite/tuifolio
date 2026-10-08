@@ -8,6 +8,7 @@ use tuifolio::{
     model::{AssetKind, LedgerEffect, StockSplit, Transaction, TransactionKind},
     price_sync::add_manual_price,
     store::Store,
+    transactions::{ManualTransactionInput, add_manual_transaction},
 };
 
 #[test]
@@ -463,6 +464,265 @@ fn manual_cost_only_quote_amount_does_not_create_cash_holding() {
             .iter()
             .any(|row| row.symbol == "USD" && row.portfolio == "Crypto")
     );
+}
+
+#[test]
+fn tui_manual_buy_uses_quote_amount_for_pnl_without_cash_holding() {
+    let mut store = temp_store();
+    store.data.config.selected_base_currency = "USD".into();
+
+    let result = add_manual_transaction(
+        &mut store,
+        ManualTransactionInput {
+            portfolio_name: "Crypto".into(),
+            timestamp: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+            kind: TransactionKind::Buy,
+            asset_symbol: "BTC".into(),
+            asset_name: "Bitcoin".into(),
+            asset_kind: AssetKind::Crypto,
+            base_amount: Decimal::ONE,
+            quote_symbol: Some("USD".into()),
+            quote_amount: Some(Decimal::new(10_000, 0)),
+            quote_ledger_effect: LedgerEffect::Ignore,
+            fee_symbol: None,
+            fee_amount: None,
+            exchange: None,
+            broker: None,
+            notes: None,
+        },
+    )
+    .unwrap();
+    add_manual_price(&mut store, "BTC", Decimal::new(50_000, 0), "USD").unwrap();
+
+    let report = build_report(&store.data);
+
+    assert!(report.holdings.iter().any(|row| {
+        row.asset_id == result.asset_id
+            && row.quantity == Decimal::ONE
+            && row.net_invested == Some(Decimal::new(10_000, 0))
+    }));
+    assert!(
+        !report
+            .holdings
+            .iter()
+            .any(|row| row.symbol == "USD" && row.portfolio == "Crypto")
+    );
+}
+
+#[test]
+fn tui_manual_buy_can_post_cash_and_fee_movements() {
+    let mut store = temp_store();
+
+    add_manual_transaction(
+        &mut store,
+        ManualTransactionInput {
+            portfolio_name: "Manual".into(),
+            timestamp: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+            kind: TransactionKind::Buy,
+            asset_symbol: "ABC".into(),
+            asset_name: "ABC Corp".into(),
+            asset_kind: AssetKind::Stock,
+            base_amount: Decimal::ONE,
+            quote_symbol: Some("USD".into()),
+            quote_amount: Some(Decimal::new(100, 0)),
+            quote_ledger_effect: LedgerEffect::Post,
+            fee_symbol: Some("USD".into()),
+            fee_amount: Some(Decimal::new(2, 0)),
+            exchange: Some("NYSE".into()),
+            broker: None,
+            notes: None,
+        },
+    )
+    .unwrap();
+
+    let usd_id = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.symbol == "USD")
+        .unwrap()
+        .id;
+    let portfolio_id = store
+        .data
+        .portfolios
+        .iter()
+        .find(|portfolio| portfolio.name == "Manual")
+        .unwrap()
+        .id;
+    let usd_balance = store
+        .data
+        .ledger_entries
+        .iter()
+        .filter(|entry| entry.portfolio_id == portfolio_id && entry.asset_id == usd_id)
+        .map(|entry| entry.quantity_delta)
+        .sum::<Decimal>();
+
+    assert_eq!(usd_balance, Decimal::new(-102, 0));
+}
+
+#[test]
+fn manual_transaction_rejects_negative_fees() {
+    let mut store = temp_store();
+
+    let error = add_manual_transaction(
+        &mut store,
+        ManualTransactionInput {
+            portfolio_name: "Manual".into(),
+            timestamp: chrono::Utc::now(),
+            kind: TransactionKind::Buy,
+            asset_symbol: "ABC".into(),
+            asset_name: "ABC Corp".into(),
+            asset_kind: AssetKind::Stock,
+            base_amount: Decimal::ONE,
+            quote_symbol: Some("USD".into()),
+            quote_amount: Some(Decimal::new(100, 0)),
+            quote_ledger_effect: LedgerEffect::Post,
+            fee_symbol: Some("USD".into()),
+            fee_amount: Some(Decimal::new(-2, 0)),
+            exchange: None,
+            broker: None,
+            notes: None,
+        },
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("fee amount"));
+    assert!(store.data.transactions.is_empty());
+}
+
+#[test]
+fn manual_transaction_rejects_existing_symbol_with_wrong_kind() {
+    let mut store = temp_store();
+    store.asset_id("BTC", "Bitcoin", AssetKind::Crypto);
+
+    let error = add_manual_transaction(
+        &mut store,
+        ManualTransactionInput {
+            portfolio_name: "Manual".into(),
+            timestamp: chrono::Utc::now(),
+            kind: TransactionKind::Buy,
+            asset_symbol: "BTC".into(),
+            asset_name: "Bitcoin".into(),
+            asset_kind: AssetKind::Stock,
+            base_amount: Decimal::ONE,
+            quote_symbol: Some("USD".into()),
+            quote_amount: Some(Decimal::new(100, 0)),
+            quote_ledger_effect: LedgerEffect::Ignore,
+            fee_symbol: None,
+            fee_amount: None,
+            exchange: None,
+            broker: None,
+            notes: None,
+        },
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("already exists"));
+    assert_eq!(store.data.assets.len(), 1);
+    assert!(store.data.transactions.is_empty());
+}
+
+#[test]
+fn manual_transaction_does_not_partially_apply_when_ledger_rebuild_fails() {
+    let mut store = temp_store();
+    let portfolio_id = store.portfolio_id("Broken");
+    let transaction_id = store.data.allocate_id();
+    store.data.transactions.push(Transaction {
+        id: transaction_id,
+        portfolio_id,
+        timestamp: chrono::Utc::now(),
+        kind: TransactionKind::Deposit,
+        base_asset_id: 999,
+        base_amount: Decimal::ONE,
+        base_ledger_effect: LedgerEffect::Post,
+        quote_asset_id: None,
+        quote_amount: None,
+        quote_ledger_effect: LedgerEffect::Post,
+        fee_asset_id: None,
+        fee_amount: None,
+        exchange: None,
+        broker: None,
+        notes: None,
+        source: "test".into(),
+        source_row_hash: "broken".into(),
+    });
+    let original = store.data.clone();
+
+    let error = add_manual_transaction(
+        &mut store,
+        ManualTransactionInput {
+            portfolio_name: "Manual".into(),
+            timestamp: chrono::Utc::now(),
+            kind: TransactionKind::Buy,
+            asset_symbol: "ABC".into(),
+            asset_name: "ABC Corp".into(),
+            asset_kind: AssetKind::Stock,
+            base_amount: Decimal::ONE,
+            quote_symbol: Some("USD".into()),
+            quote_amount: Some(Decimal::new(100, 0)),
+            quote_ledger_effect: LedgerEffect::Post,
+            fee_symbol: None,
+            fee_amount: None,
+            exchange: None,
+            broker: None,
+            notes: None,
+        },
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("missing"));
+    assert_eq!(store.data.next_id, original.next_id);
+    assert_eq!(store.data.assets.len(), original.assets.len());
+    assert_eq!(store.data.portfolios.len(), original.portfolios.len());
+    assert_eq!(store.data.transactions.len(), original.transactions.len());
+}
+
+#[test]
+fn manual_transaction_preserves_existing_asset_market_symbols() {
+    let mut store = temp_store();
+    store.asset_id_with_metadata(
+        "ABC",
+        "ABC Corp",
+        AssetKind::Stock,
+        Some("ABC.CUSTOM".into()),
+        Some("CUSTOM:ABC".into()),
+        None,
+    );
+
+    add_manual_transaction(
+        &mut store,
+        ManualTransactionInput {
+            portfolio_name: "Manual".into(),
+            timestamp: chrono::Utc::now(),
+            kind: TransactionKind::Buy,
+            asset_symbol: "ABC".into(),
+            asset_name: "ABC Corp".into(),
+            asset_kind: AssetKind::Stock,
+            base_amount: Decimal::ONE,
+            quote_symbol: Some("USD".into()),
+            quote_amount: Some(Decimal::new(100, 0)),
+            quote_ledger_effect: LedgerEffect::Ignore,
+            fee_symbol: None,
+            fee_amount: None,
+            exchange: None,
+            broker: None,
+            notes: None,
+        },
+    )
+    .unwrap();
+
+    let asset = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.symbol == "ABC")
+        .unwrap();
+    assert_eq!(asset.yahoo_symbol.as_deref(), Some("ABC.CUSTOM"));
+    assert_eq!(asset.tradingview_symbol.as_deref(), Some("CUSTOM:ABC"));
 }
 
 #[test]

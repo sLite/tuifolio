@@ -97,7 +97,7 @@ fn tui_command(store: &mut Store) -> anyhow::Result<()> {
             tracing::warn!(%error, "could not sync prices before starting TUI");
         }
     }
-    tui::run(&mut store.data)?;
+    tui::run(store)?;
     store.save()
 }
 

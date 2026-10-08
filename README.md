@@ -13,6 +13,7 @@ Local-first Delta-style portfolio tracker for the terminal.
 - Provides Yahoo-based quote sync for crypto, stocks/funds, fiat FX, and commodities through per-asset Yahoo symbols, plus manual price entry for unsupported assets.
 - Applies configured stock splits during import, including GME's 2022 4:1 split by default.
 - Shows assets, liabilities, net worth, holdings, missing prices, negative balances, and derived PnL.
+- Adds manual transactions from the TUI with explicit cash-balance posting control.
 
 ## Commands
 
@@ -49,6 +50,7 @@ cargo run -- base BTC
 - `1`: Home
 - `2`: Portfolios
 - `3`: Transactions
+- `a`: add a manual transaction
 - `t`: open transactions for the selected portfolio or holding
 - `Enter`: open a focused transaction filter or select a popup value
 - `Esc`: close an open transaction filter popup
@@ -61,3 +63,12 @@ cargo run -- base BTC
 ## Notes
 
 PnL is derived from transactions, ledger entries, and prices. It is not persisted as canonical accounting truth.
+
+For buy/sell PnL, manual transactions need an asset quantity plus a quote currency and quote amount. The quote amount becomes the cost basis/proceeds used by the current PnL calculation.
+
+The add-transaction form has a cash effect field:
+
+- `Cost basis only`: records quote amount for PnL but does not change cash holdings.
+- `Post cash movement`: also posts the quote side to the ledger, so buys reduce cash and sells increase cash.
+
+Use `Cost basis only` when you do not track broker/exchange cash balances in Tuifolio. Use `Post cash movement` when cash deposits, withdrawals, and balances are tracked explicitly.
