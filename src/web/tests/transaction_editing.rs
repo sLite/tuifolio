@@ -319,28 +319,54 @@ async fn unsafe_delete_requests_cannot_mutate_data() {
 }
 
 #[tokio::test]
-async fn imported_forms_round_trip_all_existing_transactions_without_ledger_changes() {
-    let fixture = TestApp::new(false);
+async fn invalid_unchanged_records_must_be_corrected_before_editing() {
+    let fixture = TestApp::new(true);
     fixture
         .state
         .edit(|store| {
-            let exports = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
-            crate::importer::import_delta_dir(store, &exports)?;
-            let original_data = serde_json::to_value(&store.data)?;
-            for original in store.data.transactions.clone() {
-                let input =
-                    TransactionForm::from_transaction(&original).input_for_edit(&original)?;
-                crate::transactions::update_transaction(store, original.id, input)?;
-            }
-            assert_eq!(serde_json::to_value(&store.data)?, original_data);
+            store.data.transactions[0].quote_amount = Some(rust_decimal::Decimal::ZERO);
             Ok(())
         })
         .await
         .unwrap();
-    let data = fixture.persisted();
-    assert!(!data.transactions.is_empty());
+    let original = serde_json::to_value(fixture.persisted()).unwrap();
+    let id = record_id(&fixture);
+    let mut form = existing_form(&fixture);
+    form.notes = "Notes-only edit".into();
+    let page = html(
+        fixture
+            .post(&format!("/transactions/{id}/edit"), &form_body(&form))
+            .await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+    )
+    .await;
+    assert!(page.contains("quote amount must be greater than zero"));
+    assert_eq!(serde_json::to_value(fixture.persisted()).unwrap(), original);
+    form.quote_amount = "100".into();
     assert_eq!(
-        serde_json::to_value(crate::ledger::build_ledger(&data).unwrap()).unwrap(),
-        serde_json::to_value(&data.ledger_entries).unwrap()
+        fixture
+            .post(&format!("/transactions/{id}/edit"), &form_body(&form))
+            .await
+            .status(),
+        StatusCode::SEE_OTHER
     );
+}
+
+#[tokio::test]
+async fn automatic_metadata_flags_do_not_infer_provider_symbols_in_the_editor() {
+    let fixture = TestApp::with_assets();
+    fixture
+        .state
+        .edit(|store| {
+            store.data.assets[0].metadata_source = crate::model::AssetMetadataSource::Automatic;
+            store.data.assets[0].yahoo_symbol = None;
+            store.data.assets[0].tradingview_symbol = None;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let id = fixture.persisted().assets[0].id;
+    let page = html(fixture.get(&format!("/assets/{id}")).await, StatusCode::OK).await;
+    assert!(page.contains("name=\"yahoo_symbol\" value=\"\""));
+    assert!(page.contains("name=\"tradingview_symbol\" value=\"\""));
 }

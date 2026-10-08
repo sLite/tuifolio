@@ -1,6 +1,5 @@
 use rust_decimal::Decimal;
 use tuifolio::{
-    importer::import_delta_dir,
     ledger::rebuild_ledger,
     model::{AssetKind, Id, LedgerEffect, TransactionKind},
     store::Store,
@@ -21,12 +20,12 @@ impl Fixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut store = Store::open(Some(directory.path().join("store.json"))).unwrap();
-        let base = store.asset_id("BTC", "Bitcoin", AssetKind::Crypto);
-        let quote = store.asset_id("EUR", "Euro", AssetKind::Fiat);
-        let fee = store.asset_id("USD", "US dollar", AssetKind::Fiat);
-        let other_asset = store.asset_id("ETH", "Ethereum", AssetKind::Crypto);
-        let portfolio = store.portfolio_id("Main");
-        let other_portfolio = store.portfolio_id("Other");
+        let base = support::create_asset(&mut store, "BTC", "Bitcoin", AssetKind::Crypto);
+        let quote = support::create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
+        let fee = support::create_asset(&mut store, "USD", "US dollar", AssetKind::Fiat);
+        let other_asset = support::create_asset(&mut store, "ETH", "Ethereum", AssetKind::Crypto);
+        let portfolio = support::create_portfolio(&mut store, "Main");
+        let other_portfolio = support::create_portfolio(&mut store, "Other");
         let input = initial_input(portfolio, base, quote, fee);
         let id = add_manual_transaction(&mut store, input)
             .unwrap()
@@ -194,62 +193,6 @@ fn ledger_rebuild_failure_rolls_back_updates_and_deletions() {
 }
 
 #[test]
-fn imported_transactions_can_be_updated_without_changing_unchanged_legacy_values() {
-    let mut fixture = imported_fixture();
-    let before = serde_json::to_value(&fixture.store.data).unwrap();
-    let originals = fixture.store.data.transactions.clone();
-    for transaction in originals {
-        update_transaction(
-            &mut fixture.store,
-            transaction.id,
-            ManualTransactionInput::from(&transaction),
-        )
-        .unwrap();
-    }
-    assert_eq!(serde_json::to_value(&fixture.store.data).unwrap(), before);
-}
-
-#[test]
-fn reimport_does_not_undo_edits_or_resurrect_deleted_transactions() {
-    let mut fixture = imported_fixture();
-    let exports = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
-    let original = fixture.store.data.transactions[0].clone();
-    let deleted = fixture.store.data.transactions[1].id;
-    let mut input = ManualTransactionInput::from(&original);
-    input.notes = Some("Corrected import".into());
-    update_transaction(&mut fixture.store, original.id, input).unwrap();
-    delete_transaction(&mut fixture.store, deleted).unwrap();
-    let raw_rows = fixture.store.data.raw_rows.clone();
-    let summary = import_delta_dir(&mut fixture.store, &exports).unwrap();
-    assert_eq!(summary.imported, 0);
-    assert_eq!(fixture.store.data.raw_rows, raw_rows);
-    assert!(
-        !fixture
-            .store
-            .data
-            .transactions
-            .iter()
-            .any(|transaction| transaction.id == deleted)
-    );
-    let updated = fixture
-        .store
-        .data
-        .transactions
-        .iter()
-        .find(|transaction| transaction.id == original.id)
-        .unwrap();
-    assert_eq!(updated.notes.as_deref(), Some("Corrected import"));
-}
-
-fn imported_fixture() -> Fixture {
-    let mut fixture = Fixture::new();
-    fixture.store.reset();
-    let exports = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("delta-exports");
-    import_delta_dir(&mut fixture.store, &exports).unwrap();
-    fixture
-}
-
-#[test]
 fn ignored_asset_and_quote_postings_remain_ignored_until_explicitly_changed() {
     let mut fixture = Fixture::new();
     fixture.store.data.transactions[0].base_ledger_effect = LedgerEffect::Ignore;
@@ -264,3 +207,89 @@ fn ignored_asset_and_quote_postings_remain_ignored_until_explicitly_changed() {
     update_transaction(&mut fixture.store, fixture.id, input).unwrap();
     assert_eq!(fixture.store.data.ledger_entries.len(), 2);
 }
+
+#[derive(Clone, Copy, Debug)]
+enum InvalidAmount {
+    ZeroBase,
+    NegativeBase,
+    MissingQuoteAsset,
+    MissingQuoteAmount,
+    ZeroQuote,
+    NegativeQuote,
+    ZeroFee,
+    NegativeFee,
+    MissingFeeAsset,
+    MissingFeeAmount,
+}
+
+fn invalidate(transaction: &mut tuifolio::model::Transaction, case: InvalidAmount) {
+    match case {
+        InvalidAmount::ZeroBase => transaction.base_amount = Decimal::ZERO,
+        InvalidAmount::NegativeBase => transaction.base_amount = Decimal::from(-1),
+        InvalidAmount::MissingQuoteAsset => transaction.quote_asset_id = None,
+        InvalidAmount::MissingQuoteAmount => transaction.quote_amount = None,
+        InvalidAmount::ZeroQuote => transaction.quote_amount = Some(Decimal::ZERO),
+        InvalidAmount::NegativeQuote => transaction.quote_amount = Some(Decimal::from(-1)),
+        InvalidAmount::ZeroFee => transaction.fee_amount = Some(Decimal::ZERO),
+        InvalidAmount::NegativeFee => transaction.fee_amount = Some(Decimal::from(-1)),
+        InvalidAmount::MissingFeeAsset => transaction.fee_asset_id = None,
+        InvalidAmount::MissingFeeAmount => transaction.fee_amount = None,
+    }
+}
+
+fn assert_invalid_update_rejected(case: InvalidAmount, source: &str) {
+    let mut fixture = Fixture::new();
+    let valid = fixture.input();
+    let previous = &mut fixture.store.data.transactions[0];
+    invalidate(previous, case);
+    previous.source = source.into();
+    let before = serde_json::to_value(&fixture.store.data).unwrap();
+    let mut input = fixture.input();
+    input.notes = Some("Notes-only edit".into());
+    assert!(
+        update_transaction(&mut fixture.store, fixture.id, input).is_err(),
+        "{case:?}"
+    );
+    assert_eq!(serde_json::to_value(&fixture.store.data).unwrap(), before);
+    update_transaction(&mut fixture.store, fixture.id, valid).unwrap();
+    assert_eq!(fixture.store.data.transactions[0].source, source);
+}
+
+#[test]
+fn unchanged_invalid_amounts_require_correction_regardless_of_origin() {
+    for source in ["manual", "historical.csv"] {
+        for case in [
+            InvalidAmount::ZeroBase,
+            InvalidAmount::NegativeBase,
+            InvalidAmount::MissingQuoteAsset,
+            InvalidAmount::MissingQuoteAmount,
+            InvalidAmount::ZeroQuote,
+            InvalidAmount::NegativeQuote,
+            InvalidAmount::ZeroFee,
+            InvalidAmount::NegativeFee,
+            InvalidAmount::MissingFeeAsset,
+            InvalidAmount::MissingFeeAmount,
+        ] {
+            assert_invalid_update_rejected(case, source);
+        }
+    }
+}
+
+#[test]
+fn invalid_historical_records_can_be_deleted_without_rewriting_preserved_raw_rows() {
+    let mut fixture = Fixture::new();
+    invalidate(
+        &mut fixture.store.data.transactions[0],
+        InvalidAmount::ZeroBase,
+    );
+    fixture
+        .store
+        .data
+        .raw_rows
+        .insert("old-row".into(), "historical payload".into());
+    let rows = fixture.store.data.raw_rows.clone();
+    delete_transaction(&mut fixture.store, fixture.id).unwrap();
+    assert!(fixture.store.data.transactions.is_empty());
+    assert_eq!(fixture.store.data.raw_rows, rows);
+}
+pub mod support;

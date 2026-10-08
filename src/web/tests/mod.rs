@@ -16,12 +16,8 @@ use super::{
     tables::Amount,
     views::TransactionsPage,
 };
-use crate::{
-    accounting::build_report,
-    model::{AssetKind, LedgerEffect},
-    transactions::add_manual_transaction,
-};
-use fixture::{TestApp, html, repeat_transactions};
+use crate::{accounting::build_report, model::LedgerEffect, transactions::add_manual_transaction};
+use fixture::{TestApp, duplicate_asset, html, repeat_transactions};
 
 #[tokio::test]
 async fn renders_empty_pages_and_embedded_assets() {
@@ -252,7 +248,7 @@ async fn manual_prices_distinguish_assets_with_the_same_symbol() {
     let fixture = TestApp::new(true);
     let id = fixture
         .state
-        .edit(|store| Ok(store.asset_id("BTC", "Custom BTC", AssetKind::Custom)))
+        .edit(|store| Ok(duplicate_asset(store, "Custom BTC")))
         .await
         .unwrap();
     let body = format!("asset_id={id}&price=25&currency=EUR");

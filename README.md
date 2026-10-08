@@ -11,12 +11,14 @@ and the font are embedded in the executable. No frontend build step is required.
 Requires Rust 1.89 or newer.
 
 ```sh
-cargo run -- import delta-exports
 cargo run -- web
 ```
 
 Open **http://127.0.0.1:3000**. Starting with `cargo run` also launches the web
 interface. Press `Ctrl+C` to stop.
+
+Create a portfolio and your assets in the web interface, then add transactions.
+CSV import and CSV-based datastore rebuilding have been removed.
 
 Choose a port or a separate datastore:
 
@@ -64,11 +66,11 @@ display two decimal places and crypto valuations display eight.
 The ledger-first JSON datastore lives in the platform's local data directory
 under `tuifolio/store.json`, unless you supply `--store`.
 
-- Tracks portfolios, assets, transactions, ledger entries, prices, and raw
-  imported rows.
+- Tracks portfolios, assets, transactions, ledger entries, and prices.
 - Buys and sells explicitly control which sides post to ledger balances.
 - Property and mortgage liabilities remain separate assets.
-- Configured stock splits apply during import, including GME's 2022 4:1 split.
+- Configured stock splits apply when the ledger is rebuilt. They target asset IDs;
+  no ticker-specific split events are inserted automatically.
 - Yahoo quotes support crypto, stocks, funds, fiat exchange rates, and
   commodities through per-asset provider symbols.
 - PnL is derived from transactions, ledger entries, and prices. It is not
@@ -80,15 +82,16 @@ Transactions reference portfolio and asset IDs and never create portfolios or
 change asset definitions.
 Fee assets and fee amounts must be supplied together.
 
-Editing keeps the transaction ID and original source identifiers, then rebuilds
-the ledger. The editor preserves existing asset and quote posting controls,
-legacy incomplete values when unchanged, and timestamp precision on unchanged
-dates. Deleting removes the transaction and its ledger effects, while retaining
-asset definitions, portfolios, and prices. Failed saves roll back the edit or deletion.
+Editing keeps the transaction ID and historical origin fields, then rebuilds
+the ledger. Creating and editing use the same validation rules. Existing
+records with invalid amounts or incomplete buy/sell quotes need correction
+before an edit can be saved; they can still be viewed and deleted. Loading a
+store does not repair or reject these records automatically.
 
-Original imported rows remain recorded after edits and deletions. Reimporting
-the same CSV therefore neither overwrites corrected entries nor restores deleted
-ones. An explicit datastore rebuild starts again from the exports.
+The editor preserves explicit asset and quote posting controls and timestamp
+precision on unchanged dates. Deleting removes the transaction and its ledger
+effects, while retaining asset definitions, portfolios, and prices. Failed saves
+roll back the edit or deletion.
 
 The transaction form's cash effect has two choices:
 
@@ -103,9 +106,9 @@ Fees always post to the ledger when supplied.
 
 Edits keep an asset's ID, so its transactions, ledger quantities, historical
 prices, and stock splits keep their references. Local symbols are fixed after
-creation; display names and provider mappings remain editable. User-edited
-metadata takes precedence over imported metadata and automatic defaults,
-including deliberately cleared fields.
+creation; display names and provider mappings remain editable. Provider fields
+are used exactly as configured. Blank mappings stay blank across restarts and
+transactions, regardless of an asset's historical metadata-source flag.
 
 Yahoo and TradingView symbols are entered explicitly. The editor checks their
 format, but does not search or verify instruments against those providers.
@@ -140,11 +143,33 @@ One Tuifolio process owns a datastore at a time. Stop the web server before
 running CLI commands against the same datastore. The adjacent `.lock` file is
 normal; the operating system releases its lock when the process exits.
 
+### Legacy datastore fields retained for later cleanup
+
+The datastore's JSON structure is intentionally retained in this release. CSV
+processing and its runtime workarounds are gone, but existing data is preserved.
+
+| Field | Current behavior | Later cleanup |
+| --- | --- | --- |
+| `raw_rows` | Historical row payloads load and save unchanged. Nothing parses, hashes, or consults them for deduplication. | Remove the field and its stored payloads through an explicit schema/data migration. |
+| Transaction `source` | Historical origin labels are preserved and can appear in transaction details. New transactions use `manual`. Origin never affects validation, balances, or valuation. | Decide whether to keep general provenance or remove old import labels. |
+| Transaction `source_row_hash` | Existing values survive edits. New transactions still write `manual:<id>` to satisfy the retained field. It is not used for matching or deduplication. | Remove the field or replace it with a general-purpose identifier if needed. |
+| Asset `metadata_source` | The `Automatic`/`User` values remain readable and writable; new or edited assets use `User`. The flag no longer controls provider inference or metadata reconciliation. | Remove the flag and its enum when the storage schema is cleaned up. |
+
+Existing transactions originally created from CSV, including property/mortgage
+history, remain ordinary ledger records. This change does not rewrite or delete
+them, clear raw rows, or reset IDs.
+
+Posting effects, intrinsic valuation currencies, prices and their sources, and
+asset-ID stock split events are active accounting features, not obsolete import
+fields. Existing configured split events continue to affect balances.
+
+The obsolete symbol-based stock-split field and conversion code were removed.
+Splits must already reference asset IDs; old symbol-only configurations are no
+longer converted. This does not alter the converted split-event representation.
+
 ## CLI commands
 
 ```sh
-cargo run -- import delta-exports
-cargo run -- rebuild delta-exports
 cargo run -- sync-prices
 cargo run -- summary
 cargo run -- holding BTC
@@ -153,15 +178,15 @@ cargo run -- add-price GOLD 3000 EUR
 cargo run -- base BTC
 ```
 
-`rebuild` resets the datastore, including manual transactions and asset settings,
-then imports the exports again. `base` selects a base currency and adds it to the
-configured choices if necessary.
+`base` selects a base currency and adds it to the configured choices if necessary.
 
 ## Development
 
 Web handlers and view models live in `src/web/`, HTML templates in `templates/`,
 and embedded browser assets in `static/`. Rebuild Rust after changing templates
 or assets. Vendored HTMX 2.0.8 and IBM Plex Sans have adjacent license files.
+Tests construct assets, portfolios, transactions, and split events directly;
+they do not depend on CSV files or a personal datastore.
 
 ```sh
 cargo fmt --check

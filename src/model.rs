@@ -62,35 +62,11 @@ pub enum AssetMetadataSource {
 impl Asset {
     pub fn yahoo_quote_symbol(&self) -> Option<&str> {
         match self.kind {
-            AssetKind::Crypto => self.yahoo_symbol.as_deref(),
-            AssetKind::Stock | AssetKind::Fund | AssetKind::Commodity => {
-                self.yahoo_symbol.as_deref().or_else(|| {
-                    (self.metadata_source == AssetMetadataSource::Automatic)
-                        .then_some(self.symbol.as_str())
-                })
+            AssetKind::Crypto | AssetKind::Stock | AssetKind::Fund | AssetKind::Commodity => {
+                self.yahoo_symbol.as_deref()
             }
             _ => None,
         }
-    }
-}
-
-pub fn default_tradingview_symbol(symbol: &str, kind: AssetKind) -> Option<String> {
-    match kind {
-        AssetKind::Crypto => Some(format!("CRYPTO:{symbol}USD")),
-        AssetKind::Commodity => match symbol {
-            "GOLD" => Some("OANDA:XAUUSD".into()),
-            _ => None,
-        },
-        AssetKind::Stock | AssetKind::Fund => match symbol {
-            "GME" => Some("NYSE:GME".into()),
-            "BYND" => Some("NASDAQ:BYND".into()),
-            "INTC" => Some("NASDAQ:INTC".into()),
-            "VWCE.DE" => Some("XETR:VWCE".into()),
-            "EI4.F" => Some("FWB:EI4".into()),
-            "639.DE" => Some("XETR:639".into()),
-            _ => None,
-        },
-        AssetKind::Fiat | AssetKind::Custom | AssetKind::Property | AssetKind::Liability => None,
     }
 }
 
@@ -167,8 +143,6 @@ pub struct Config {
 pub struct StockSplit {
     #[serde(default)]
     pub asset_id: Id,
-    #[serde(default, rename = "symbol", skip_serializing)]
-    pub legacy_symbol: Option<String>,
     pub effective_date: String,
     #[serde(with = "rust_decimal::serde::str")]
     pub numerator: Decimal,

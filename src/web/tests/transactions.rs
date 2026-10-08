@@ -1,5 +1,4 @@
-use super::fixture::{TestApp, html};
-use crate::model::AssetKind;
+use super::fixture::{TestApp, duplicate_asset, html};
 use axum::http::StatusCode;
 
 #[tokio::test]
@@ -105,7 +104,7 @@ async fn duplicate_symbols_have_distinct_choices_and_transactions_use_the_select
     let btc = fixture.asset_id("BTC").await;
     let custom = fixture
         .state
-        .edit(|store| Ok(store.asset_id("BTC", "Custom Bitcoin", AssetKind::Custom)))
+        .edit(|store| Ok(duplicate_asset(store, "Custom Bitcoin")))
         .await
         .unwrap();
     let page = html(

@@ -131,6 +131,7 @@ td.number { font-family: var(--numbers); font-size: 11px; line-height: 1.9; }
 .empty-table { text-align: center; padding: 52px 24px; color: var(--muted); white-space: normal; }
 .empty-table a { text-decoration: underline; }
 .empty-state { padding: 48px 32px; text-align: center; }
+.empty-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
 .empty-state h2 { font-size: 24px; margin-top: 10px; }
 .empty-state p { color: var(--muted); margin: 14px auto 24px; max-width: 480px; }
 .empty-state details { max-width: 480px; margin: 28px auto 0; font-size: 12px; }

@@ -10,8 +10,7 @@
 {% if summary.missing > 0 %}<div class="notice warning"><span>{{ summary.missing }} holdings have no valuation. Totals exclude these holdings.</span><a href="/assets">Review assets →</a></div>{% endif %}
 {% if summary.negative > 0 %}<div class="notice warning">{{ summary.negative }} non-liability holdings have negative balances. Check their ledger transactions.</div>{% endif %}
 {% if empty_store %}
-<section class="empty-state panel"><span class="eyebrow">Getting started</span><h2>Your ledger is empty</h2><p>Add your first transaction, or import your Delta CSV exports from the command line.</p><a class="button primary" href="/transactions/new">Add first transaction</a><details><summary>Import a Delta export</summary><p>Stop this server, run the import, then start the web interface again.</p><pre><code>cargo run -- import delta-exports
-cargo run -- web</code></pre></details></section>
+<section class="empty-state panel"><span class="eyebrow">Getting started</span><h2>Your ledger is empty</h2><p>Create a portfolio and configure your assets, then record your first transaction.</p><div class="empty-actions"><a class="button" href="/portfolios/new">Create portfolio</a><a class="button" href="/assets/new">Create asset</a><a class="button primary" href="/transactions/new">Add first transaction</a></div></section>
 {% else %}
 <section class="panel">
   <div class="panel-heading"><h2>Holdings <span class="count">{{ holdings.len() }}</span></h2><span class="muted">Sorted by value</span></div>

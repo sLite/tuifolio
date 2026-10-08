@@ -19,9 +19,21 @@ impl Fixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut store = Store::open(Some(directory.path().join("store.json"))).unwrap();
-        store.asset_id_with_yahoo_symbol("AAPL", "Apple", AssetKind::Stock, Some("AAPL".into()));
-        store.asset_id("EUR", "Euro", AssetKind::Fiat);
-        store.portfolio_id("Main");
+        save_asset(
+            &mut store,
+            None,
+            AssetInput {
+                symbol: "AAPL".into(),
+                name: "Apple".into(),
+                kind: AssetKind::Stock,
+                yahoo_symbol: Some("AAPL".into()),
+                tradingview_symbol: None,
+                valuation_currency: None,
+            },
+        )
+        .unwrap();
+        support::create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
+        support::create_portfolio(&mut store, "Main");
         let input = stock_transaction(&store);
         let result = add_manual_transaction(&mut store, input).unwrap();
         add_manual_price(&mut store, "AAPL", dec!(100), "EUR").unwrap();
@@ -115,34 +127,6 @@ fn editing_display_names_preserves_asset_identity_transactions_prices_and_balanc
 }
 
 #[test]
-fn later_import_resolution_respects_manual_metadata_for_the_same_symbol() {
-    let mut fixture = Fixture::new();
-    let mut input = fixture.input();
-    input.kind = AssetKind::Fund;
-    input.yahoo_symbol = Some("AAPL.DE".into());
-    input.tradingview_symbol = Some("NASDAQ:AAPL".into());
-    save_asset(&mut fixture.store, Some(fixture.id), input).unwrap();
-    let original_count = fixture.store.data.assets.len();
-    let imported = fixture.store.asset_id_with_metadata(
-        "AAPL",
-        "Old export name",
-        AssetKind::Stock,
-        Some("AAPL".into()),
-        Some("OLD:AAPL".into()),
-        None,
-    );
-    assert_eq!(imported, fixture.id);
-    assert_eq!(fixture.store.data.assets.len(), original_count);
-    assert_eq!(fixture.asset().name, "Apple");
-    assert_eq!(fixture.asset().kind, AssetKind::Fund);
-    assert_eq!(fixture.asset().yahoo_symbol.as_deref(), Some("AAPL.DE"));
-    assert_eq!(
-        fixture.asset().tradingview_symbol.as_deref(),
-        Some("NASDAQ:AAPL")
-    );
-}
-
-#[test]
 fn cleared_provider_settings_survive_reopen_transactions_and_price_refresh() {
     let mut fixture = Fixture::new();
     let mut input = fixture.input();
@@ -169,14 +153,19 @@ fn cleared_provider_settings_survive_reopen_transactions_and_price_refresh() {
 #[test]
 fn cleared_crypto_chart_does_not_reappear_after_reopen_or_new_transactions() {
     let mut fixture = Fixture::new();
-    fixture.id = fixture.store.asset_id_with_metadata(
-        "BTC",
-        "Bitcoin",
-        AssetKind::Crypto,
-        Some("BTC-USD".into()),
-        Some("CRYPTO:BTCUSD".into()),
+    fixture.id = save_asset(
+        &mut fixture.store,
         None,
-    );
+        AssetInput {
+            symbol: "BTC".into(),
+            name: "Bitcoin".into(),
+            kind: AssetKind::Crypto,
+            yahoo_symbol: Some("BTC-USD".into()),
+            tradingview_symbol: Some("CRYPTO:BTCUSD".into()),
+            valuation_currency: None,
+        },
+    )
+    .unwrap();
     let mut input = fixture.input();
     input.yahoo_symbol = None;
     input.tradingview_symbol = None;
@@ -194,9 +183,12 @@ fn cleared_crypto_chart_does_not_reappear_after_reopen_or_new_transactions() {
 #[test]
 fn existing_legacy_duplicate_symbols_can_still_have_their_metadata_edited() {
     let mut fixture = Fixture::new();
-    fixture.id = fixture
-        .store
-        .asset_id("BTC", "Legacy custom BTC", AssetKind::Custom);
+    fixture.id = support::duplicate_asset(
+        &mut fixture.store,
+        fixture.id,
+        "Legacy custom asset",
+        AssetKind::Custom,
+    );
     let mut input = fixture.input();
     input.name = "Edited custom asset".into();
     save_asset(&mut fixture.store, Some(fixture.id), input).unwrap();
@@ -404,3 +396,4 @@ fn refresh_keeps_quotes_and_other_edits_when_only_display_metadata_changed() {
     assert_eq!(fixture.asset().name, "Edited during refresh");
     assert_eq!(fixture.store.data.prices.len(), 2);
 }
+pub mod support;

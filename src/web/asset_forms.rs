@@ -27,10 +27,7 @@ impl AssetForm {
             symbol: asset.symbol.clone(),
             name: asset.name.clone(),
             kind: format!("{:?}", asset.kind),
-            yahoo_symbol: asset
-                .yahoo_symbol
-                .clone()
-                .unwrap_or_else(|| asset.yahoo_quote_symbol().unwrap_or_default().to_string()),
+            yahoo_symbol: asset.yahoo_symbol.clone().unwrap_or_default(),
             tradingview_symbol: asset.tradingview_symbol.clone().unwrap_or_default(),
             valuation_currency: asset.valuation_currency.clone().unwrap_or_default(),
         }

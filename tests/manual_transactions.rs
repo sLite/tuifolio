@@ -1,7 +1,7 @@
-mod support;
+pub mod support;
 
 use rust_decimal::Decimal;
-use support::temp_store;
+use support::{create_asset, create_portfolio, duplicate_asset, temp_store};
 use tuifolio::{
     accounting::build_report,
     assets::{AssetInput, save_asset},
@@ -12,9 +12,9 @@ use tuifolio::{
 };
 
 fn buy_input(store: &mut Store, symbol: &str, kind: AssetKind) -> ManualTransactionInput {
-    let base_asset_id = store.asset_id(symbol, symbol, kind);
-    let quote_asset_id = store.asset_id("USD", "US dollar", AssetKind::Fiat);
-    let portfolio_id = store.portfolio_id("Manual");
+    let base_asset_id = create_asset(store, symbol, symbol, kind);
+    let quote_asset_id = create_asset(store, "USD", "US dollar", AssetKind::Fiat);
+    let portfolio_id = create_portfolio(store, "Manual");
     ManualTransactionInput {
         portfolio_id,
         timestamp: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
@@ -40,7 +40,7 @@ fn manual_buy_uses_quote_amount_for_pnl_without_cash_holding() {
     let mut store = temp_store();
     store.data.config.selected_base_currency = "USD".into();
     let mut input = buy_input(&mut store, "BTC", AssetKind::Crypto);
-    input.portfolio_id = store.portfolio_id("Crypto");
+    input.portfolio_id = create_portfolio(&mut store, "Crypto");
     input.quote_amount = Some(Decimal::from(10000));
     let assets_before = serde_json::to_value(&store.data.assets).unwrap();
     let result = add_manual_transaction(&mut store, input).unwrap();
@@ -161,15 +161,20 @@ fn manual_transaction_does_not_partially_apply_when_ledger_rebuild_fails() {
 #[test]
 fn manual_transaction_preserves_existing_asset_market_symbols() {
     let mut store = temp_store();
-    store.asset_id_with_metadata(
-        "ABC",
-        "ABC Corp",
-        AssetKind::Stock,
-        Some("ABC.CUSTOM".into()),
-        Some("CUSTOM:ABC".into()),
-        None,
-    );
     let input = buy_input(&mut store, "ABC", AssetKind::Stock);
+    save_asset(
+        &mut store,
+        Some(input.base_asset_id),
+        AssetInput {
+            symbol: "ABC".into(),
+            name: "ABC Corp".into(),
+            kind: AssetKind::Stock,
+            yahoo_symbol: Some("ABC.CUSTOM".into()),
+            tradingview_symbol: Some("CUSTOM:ABC".into()),
+            valuation_currency: None,
+        },
+    )
+    .unwrap();
     let before = serde_json::to_value(&store.data.assets).unwrap();
     add_manual_transaction(&mut store, input).unwrap();
     assert_eq!(serde_json::to_value(&store.data.assets).unwrap(), before);
@@ -179,7 +184,12 @@ fn manual_transaction_preserves_existing_asset_market_symbols() {
 fn manual_transaction_picks_the_requested_id_when_symbols_are_duplicated() {
     let mut store = temp_store();
     let mut input = buy_input(&mut store, "BTC", AssetKind::Crypto);
-    let custom = store.asset_id("BTC", "Custom Bitcoin", AssetKind::Custom);
+    let custom = duplicate_asset(
+        &mut store,
+        input.base_asset_id,
+        "Custom Bitcoin",
+        AssetKind::Custom,
+    );
     input.base_asset_id = custom;
     let result = add_manual_transaction(&mut store, input).unwrap();
     assert_eq!(result.asset_id, custom);

@@ -1,4 +1,4 @@
-use super::fixture::{TestApp, html};
+use super::fixture::{TestApp, configure_asset, html};
 use crate::model::{AssetKind, AssetMetadataSource};
 use axum::http::StatusCode;
 
@@ -205,7 +205,7 @@ async fn every_existing_asset_symbol_is_read_only_and_forged_changes_are_rejecte
     let fixture = TestApp::with_assets();
     let id = fixture
         .state
-        .edit(|store| Ok(store.asset_id("AAPL", "Apple", AssetKind::Stock)))
+        .edit(|store| Ok(configure_asset(store, "AAPL", "Apple", AssetKind::Stock)))
         .await
         .unwrap();
     let page = html(fixture.get(&format!("/assets/{id}")).await, StatusCode::OK).await;

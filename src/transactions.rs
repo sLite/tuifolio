@@ -57,7 +57,7 @@ pub fn add_manual_transaction(
     store: &mut Store,
     input: ManualTransactionInput,
 ) -> anyhow::Result<ManualTransactionResult> {
-    validate_input(&store.data, &input, None)?;
+    validate_input(&store.data, &input)?;
     let mut data = store.data.clone();
     let portfolio_id = input.portfolio_id;
     let transaction_id = data.allocate_id();
@@ -80,7 +80,7 @@ pub fn update_transaction(
 ) -> anyhow::Result<ManualTransactionResult> {
     let index = transaction_index(&store.data, id)?;
     let previous = &store.data.transactions[index];
-    validate_input(&store.data, &input, Some(previous))?;
+    validate_input(&store.data, &input)?;
     let mut transaction = manual_transaction(id, input.portfolio_id, input);
     transaction.source = previous.source.clone();
     transaction.source_row_hash = previous.source_row_hash.clone();
@@ -139,49 +139,20 @@ fn manual_transaction(id: Id, portfolio_id: Id, input: ManualTransactionInput) -
     }
 }
 
-fn validate_input(
-    data: &StoreData,
-    input: &ManualTransactionInput,
-    previous: Option<&Transaction>,
-) -> anyhow::Result<()> {
+fn validate_input(data: &StoreData, input: &ManualTransactionInput) -> anyhow::Result<()> {
     anyhow::ensure!(
         data.portfolios
             .iter()
             .any(|portfolio| portfolio.id == input.portfolio_id),
         "the selected portfolio does not exist; choose an existing portfolio"
     );
-    if !previous.is_some_and(|old| unchanged_base(old, input)) {
-        anyhow::ensure!(
-            input.base_amount > Decimal::ZERO,
-            "quantity must be greater than zero"
-        );
-    }
+    anyhow::ensure!(
+        input.base_amount > Decimal::ZERO,
+        "quantity must be greater than zero"
+    );
     validate_asset_ids(data, input)?;
-    if !previous.is_some_and(|old| unchanged_quote(old, input)) {
-        validate_quote(input)?;
-    }
-    if !previous.is_some_and(|old| unchanged_fee(old, input)) {
-        validate_fee(input)?;
-    }
-    Ok(())
-}
-
-fn unchanged_base(old: &Transaction, input: &ManualTransactionInput) -> bool {
-    old.kind == input.kind
-        && old.base_asset_id == input.base_asset_id
-        && old.base_amount == input.base_amount
-        && old.base_ledger_effect == input.base_ledger_effect
-}
-
-fn unchanged_quote(old: &Transaction, input: &ManualTransactionInput) -> bool {
-    old.kind == input.kind
-        && old.quote_asset_id == input.quote_asset_id
-        && old.quote_amount == input.quote_amount
-        && old.quote_ledger_effect == input.quote_ledger_effect
-}
-
-fn unchanged_fee(old: &Transaction, input: &ManualTransactionInput) -> bool {
-    old.fee_asset_id == input.fee_asset_id && old.fee_amount == input.fee_amount
+    validate_quote(input)?;
+    validate_fee(input)
 }
 
 fn validate_asset_ids(data: &StoreData, input: &ManualTransactionInput) -> anyhow::Result<()> {

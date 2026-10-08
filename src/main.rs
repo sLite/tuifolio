@@ -5,7 +5,6 @@ use rust_decimal::Decimal;
 
 use tuifolio::accounting::build_report;
 use tuifolio::formatting::money;
-use tuifolio::importer::import_delta_dir;
 use tuifolio::price_sync::{add_manual_price, sync_prices};
 use tuifolio::store::Store;
 use tuifolio::web;
@@ -21,14 +20,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    Import {
-        #[arg(default_value = "delta-exports")]
-        dir: PathBuf,
-    },
-    Rebuild {
-        #[arg(default_value = "delta-exports")]
-        dir: PathBuf,
-    },
     Web {
         #[arg(long, default_value_t = 3000)]
         port: u16,
@@ -56,8 +47,6 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let mut store = Store::open(cli.store)?;
     match cli.command.unwrap_or(Command::Web { port: 3000 }) {
-        Command::Import { dir } => import_command(&mut store, dir)?,
-        Command::Rebuild { dir } => rebuild_command(&mut store, dir)?,
         Command::Web { port } => return web::run(store, port),
         Command::Summary => summary_command(&store),
         Command::Holding { symbol } => holding_command(&store, &symbol),
@@ -71,19 +60,6 @@ fn main() -> anyhow::Result<()> {
         Command::Base { currency } => base_command(&mut store, currency)?,
     }
     Ok(())
-}
-
-fn import_command(store: &mut Store, dir: PathBuf) -> anyhow::Result<()> {
-    let summary = import_delta_dir(store, &dir)?;
-    store.save()?;
-    println!("imported {}, skipped {}", summary.imported, summary.skipped);
-    println!("store: {}", store.path().display());
-    Ok(())
-}
-
-fn rebuild_command(store: &mut Store, dir: PathBuf) -> anyhow::Result<()> {
-    store.reset();
-    import_command(store, dir)
 }
 
 fn summary_command(store: &Store) {

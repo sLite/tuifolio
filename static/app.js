@@ -1,5 +1,4 @@
 function updateTransactionRequirements(form) {
-  if (form.dataset.transactionId) return;
   const trade = ["Buy", "Sell"].includes(form.elements.kind.value);
   form.elements.quote_asset_id.required = trade || form.elements.quote_amount.value.trim() !== "";
   form.elements.quote_amount.required = trade;

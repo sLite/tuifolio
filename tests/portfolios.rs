@@ -1,4 +1,4 @@
-mod support;
+pub mod support;
 
 use support::temp_store;
 use tuifolio::{

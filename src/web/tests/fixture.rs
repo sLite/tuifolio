@@ -11,7 +11,9 @@ use tower::ServiceExt;
 
 use super::super::{forms::TransactionForm, router, state::AppState};
 use crate::{
+    assets::{AssetInput, save_asset},
     model::{AssetKind, Id, StoreData},
+    portfolios::{PortfolioInput, create_portfolio},
     price_sync::add_manual_price,
     store::Store,
     transactions::add_manual_transaction,
@@ -105,17 +107,54 @@ impl TestApp {
 }
 
 fn configure_assets(store: &mut Store) {
-    store.asset_id_with_metadata(
-        "BTC",
-        "Bitcoin",
-        AssetKind::Crypto,
-        Some("BTC-USD".into()),
-        Some("CRYPTO:BTCUSD".into()),
+    save_asset(
+        store,
         None,
-    );
-    store.asset_id("EUR", "Euro", AssetKind::Fiat);
-    store.asset_id("USD", "US dollar", AssetKind::Fiat);
-    store.portfolio_id("Main");
+        AssetInput {
+            symbol: "BTC".into(),
+            name: "Bitcoin".into(),
+            kind: AssetKind::Crypto,
+            yahoo_symbol: Some("BTC-USD".into()),
+            tradingview_symbol: Some("CRYPTO:BTCUSD".into()),
+            valuation_currency: None,
+        },
+    )
+    .unwrap();
+    configure_asset(store, "EUR", "Euro", AssetKind::Fiat);
+    configure_asset(store, "USD", "US dollar", AssetKind::Fiat);
+    create_portfolio(
+        store,
+        PortfolioInput {
+            name: "Main".into(),
+        },
+    )
+    .unwrap();
+}
+
+pub(super) fn configure_asset(store: &mut Store, symbol: &str, name: &str, kind: AssetKind) -> Id {
+    save_asset(
+        store,
+        None,
+        AssetInput {
+            symbol: symbol.into(),
+            name: name.into(),
+            kind,
+            yahoo_symbol: None,
+            tradingview_symbol: None,
+            valuation_currency: None,
+        },
+    )
+    .unwrap()
+}
+
+pub(super) fn duplicate_asset(store: &mut Store, name: &str) -> Id {
+    let mut asset = store.data.assets[0].clone();
+    asset.id = store.data.allocate_id();
+    asset.name = name.into();
+    asset.kind = AssetKind::Custom;
+    let id = asset.id;
+    store.data.assets.push(asset);
+    id
 }
 
 fn seed(store: &mut Store) {
