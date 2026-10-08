@@ -79,8 +79,6 @@ pub struct Transaction {
     pub base_asset_id: Id,
     #[serde(with = "rust_decimal::serde::str")]
     pub base_amount: Decimal,
-    #[serde(default)]
-    pub base_ledger_effect: LedgerEffect,
     pub quote_asset_id: Option<Id>,
     #[serde(with = "rust_decimal::serde::str_option")]
     pub quote_amount: Option<Decimal>,

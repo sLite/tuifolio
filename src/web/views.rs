@@ -263,7 +263,6 @@ pub(super) struct TransactionPage {
     pub quote_assets: Vec<Choice>,
     pub fee_assets: Vec<Choice>,
     pub kinds: Vec<Choice>,
-    pub base_effects: Vec<Choice>,
 }
 
 impl TransactionPage {
@@ -283,10 +282,6 @@ impl TransactionPage {
         };
         let portfolios = portfolio_choices(data, &query);
         let id = transaction.map(|transaction| transaction.id);
-        let base_effects = enum_choices(
-            &[("Post", "Post asset movement"), ("Ignore", "Record only")],
-            &format!("{:?}", form.base_ledger_effect),
-        );
         Self {
             common: transaction_common(data, id),
             id,
@@ -300,7 +295,6 @@ impl TransactionPage {
             quote_assets,
             fee_assets,
             kinds,
-            base_effects,
         }
     }
 }

@@ -21,6 +21,7 @@ async fn transaction_form_uses_existing_asset_choices_and_preselects_known_ids()
         "<option value=\"{eur}\" selected>EUR · Euro · Cash</option>"
     )));
     for field in [
+        "base_ledger_effect",
         "asset_symbol",
         "asset_name",
         "asset_kind",

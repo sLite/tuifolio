@@ -17,7 +17,6 @@ pub(super) struct TransactionForm {
     pub kind: String,
     pub base_asset_id: String,
     pub base_amount: String,
-    pub base_ledger_effect: LedgerEffect,
     pub quote_asset_id: String,
     pub quote_amount: String,
     pub quote_ledger_effect: String,
@@ -39,7 +38,6 @@ impl TransactionForm {
             kind: format!("{:?}", transaction.kind),
             base_asset_id: transaction.base_asset_id.to_string(),
             base_amount: transaction.base_amount.to_string(),
-            base_ledger_effect: transaction.base_ledger_effect,
             quote_asset_id: id_string(transaction.quote_asset_id),
             quote_amount: amount_string(transaction.quote_amount),
             quote_ledger_effect: format!("{:?}", transaction.quote_ledger_effect),
@@ -99,7 +97,6 @@ impl TransactionForm {
                 .parse()
                 .context("choose an existing asset")?,
             base_amount: decimal(&self.base_amount, "quantity")?,
-            base_ledger_effect: self.base_ledger_effect,
             quote_asset_id: optional_asset_id(&self.quote_asset_id, "quote asset")?,
             quote_amount: optional_decimal(&self.quote_amount, "quote amount")?,
             quote_ledger_effect: enum_value::<LedgerEffect>(

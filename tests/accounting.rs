@@ -24,7 +24,6 @@ fn movement(
         kind,
         base_asset_id: asset_id,
         base_amount: Decimal::from(quantity),
-        base_ledger_effect: LedgerEffect::Post,
         quote_asset_id: None,
         quote_amount: None,
         quote_ledger_effect: LedgerEffect::Ignore,

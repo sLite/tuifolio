@@ -23,7 +23,6 @@ fn transaction(
         kind,
         base_asset_id: asset_id,
         base_amount: amount,
-        base_ledger_effect: LedgerEffect::Post,
         quote_asset_id: None,
         quote_amount: None,
         quote_ledger_effect: LedgerEffect::Post,
@@ -100,6 +99,27 @@ fn ledger_rebuild_fails_on_missing_posted_asset() {
     let transaction = transaction(&mut store, 999, TransactionKind::Deposit, Decimal::ONE);
     store.data.transactions.push(transaction);
     assert!(rebuild_ledger(&mut store.data).is_err());
+}
+
+#[test]
+fn legacy_asset_posting_flags_cannot_suppress_asset_movements() {
+    for effect in ["Post", "Ignore"] {
+        let mut store = ledger_store();
+        let asset_id = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
+        let movement = transaction(&mut store, asset_id, TransactionKind::Deposit, Decimal::ONE);
+        let mut legacy = serde_json::to_value(&movement).unwrap();
+        legacy["base_ledger_effect"] = effect.into();
+        let loaded: Transaction = serde_json::from_value(legacy).unwrap();
+        assert!(
+            serde_json::to_value(&loaded)
+                .unwrap()
+                .get("base_ledger_effect")
+                .is_none()
+        );
+        store.data.transactions.push(loaded);
+        rebuild_ledger(&mut store.data).unwrap();
+        assert_eq!(balance(&store, asset_id), Decimal::ONE);
+    }
 }
 
 fn dated_movement(store: &mut Store, asset: Id, kind: TransactionKind, date: &str) -> Id {

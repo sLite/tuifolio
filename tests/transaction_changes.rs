@@ -63,7 +63,6 @@ fn initial_input(
         kind: TransactionKind::Buy,
         base_asset_id,
         base_amount: Decimal::ONE,
-        base_ledger_effect: LedgerEffect::Post,
         quote_asset_id: Some(quote),
         quote_amount: Some(Decimal::from(100)),
         quote_ledger_effect: LedgerEffect::Post,
@@ -193,19 +192,29 @@ fn ledger_rebuild_failure_rolls_back_updates_and_deletions() {
 }
 
 #[test]
-fn ignored_asset_and_quote_postings_remain_ignored_until_explicitly_changed() {
+fn cost_basis_only_preserves_asset_and_fee_movements_until_cash_effect_changes() {
     let mut fixture = Fixture::new();
-    fixture.store.data.transactions[0].base_ledger_effect = LedgerEffect::Ignore;
     fixture.store.data.transactions[0].quote_ledger_effect = LedgerEffect::Ignore;
     rebuild_ledger(&mut fixture.store.data).unwrap();
     let mut input = fixture.input();
     input.notes = Some("Changed notes".into());
     update_transaction(&mut fixture.store, fixture.id, input).unwrap();
-    assert_eq!(fixture.store.data.ledger_entries.len(), 1);
-    let mut input = fixture.input();
-    input.base_ledger_effect = LedgerEffect::Post;
-    update_transaction(&mut fixture.store, fixture.id, input).unwrap();
+    let transaction = &fixture.store.data.transactions[0];
     assert_eq!(fixture.store.data.ledger_entries.len(), 2);
+    for (asset, amount) in [
+        (transaction.base_asset_id, 1),
+        (transaction.quote_asset_id.unwrap(), 0),
+        (transaction.fee_asset_id.unwrap(), -2),
+    ] {
+        assert_eq!(
+            balance(&fixture.store, transaction.portfolio_id, asset),
+            Decimal::from(amount)
+        );
+    }
+    let mut input = fixture.input();
+    input.quote_ledger_effect = LedgerEffect::Post;
+    update_transaction(&mut fixture.store, fixture.id, input).unwrap();
+    assert_eq!(fixture.store.data.ledger_entries.len(), 3);
 }
 
 #[derive(Clone, Copy, Debug)]

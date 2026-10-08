@@ -34,57 +34,82 @@ fn transaction_entries(
     assets: &HashMap<Id, &Asset>,
     data: &StoreData,
 ) -> anyhow::Result<Vec<LedgerEntry>> {
-    let mut entries = Vec::new();
-    if transaction.base_ledger_effect == LedgerEffect::Post {
-        let asset = require_asset(
-            assets,
-            transaction.base_asset_id,
-            transaction.id,
-            LedgerRole::Base,
-        )?;
-        entries.push(LedgerEntry {
-            transaction_id: transaction.id,
-            portfolio_id: transaction.portfolio_id,
-            asset_id: transaction.base_asset_id,
-            quantity_delta: split_adjusted_amount(
-                data,
-                asset.id,
-                transaction.timestamp,
-                transaction.base_amount,
-            )? * base_sign(transaction.kind),
-            role: LedgerRole::Base,
-        });
+    let mut entries = vec![base_entry(transaction, assets, data)?];
+    if let Some(entry) = quote_entry(transaction, assets)? {
+        entries.push(entry);
     }
-
-    if let (Some(asset_id), Some(amount)) = (transaction.quote_asset_id, transaction.quote_amount)
-        && !quote_sign(transaction.kind).is_zero()
-        && !amount.is_zero()
-        && transaction.quote_ledger_effect == LedgerEffect::Post
-    {
-        require_asset(assets, asset_id, transaction.id, LedgerRole::Quote)?;
-        entries.push(LedgerEntry {
-            transaction_id: transaction.id,
-            portfolio_id: transaction.portfolio_id,
-            asset_id,
-            quantity_delta: amount * quote_sign(transaction.kind),
-            role: LedgerRole::Quote,
-        });
+    if let Some(entry) = fee_entry(transaction, assets)? {
+        entries.push(entry);
     }
-
-    if let (Some(asset_id), Some(amount)) = (transaction.fee_asset_id, transaction.fee_amount)
-        && !amount.is_zero()
-    {
-        require_asset(assets, asset_id, transaction.id, LedgerRole::Fee)?;
-        entries.push(LedgerEntry {
-            transaction_id: transaction.id,
-            portfolio_id: transaction.portfolio_id,
-            asset_id,
-            quantity_delta: -amount,
-            role: LedgerRole::Fee,
-        });
-    }
-
     Ok(entries)
+}
+
+fn base_entry(
+    transaction: &Transaction,
+    assets: &HashMap<Id, &Asset>,
+    data: &StoreData,
+) -> anyhow::Result<LedgerEntry> {
+    let asset = require_asset(
+        assets,
+        transaction.base_asset_id,
+        transaction.id,
+        LedgerRole::Base,
+    )?;
+    Ok(LedgerEntry {
+        transaction_id: transaction.id,
+        portfolio_id: transaction.portfolio_id,
+        asset_id: asset.id,
+        quantity_delta: split_adjusted_amount(
+            data,
+            asset.id,
+            transaction.timestamp,
+            transaction.base_amount,
+        )? * base_sign(transaction.kind),
+        role: LedgerRole::Base,
+    })
+}
+
+fn quote_entry(
+    transaction: &Transaction,
+    assets: &HashMap<Id, &Asset>,
+) -> anyhow::Result<Option<LedgerEntry>> {
+    let (Some(asset_id), Some(amount)) = (transaction.quote_asset_id, transaction.quote_amount)
+    else {
+        return Ok(None);
+    };
+    let sign = quote_sign(transaction.kind);
+    if sign.is_zero() || amount.is_zero() || transaction.quote_ledger_effect == LedgerEffect::Ignore
+    {
+        return Ok(None);
+    }
+    require_asset(assets, asset_id, transaction.id, LedgerRole::Quote)?;
+    Ok(Some(LedgerEntry {
+        transaction_id: transaction.id,
+        portfolio_id: transaction.portfolio_id,
+        asset_id,
+        quantity_delta: amount * sign,
+        role: LedgerRole::Quote,
+    }))
+}
+
+fn fee_entry(
+    transaction: &Transaction,
+    assets: &HashMap<Id, &Asset>,
+) -> anyhow::Result<Option<LedgerEntry>> {
+    let (Some(asset_id), Some(amount)) = (transaction.fee_asset_id, transaction.fee_amount) else {
+        return Ok(None);
+    };
+    if amount.is_zero() {
+        return Ok(None);
+    }
+    require_asset(assets, asset_id, transaction.id, LedgerRole::Fee)?;
+    Ok(Some(LedgerEntry {
+        transaction_id: transaction.id,
+        portfolio_id: transaction.portfolio_id,
+        asset_id,
+        quantity_delta: -amount,
+        role: LedgerRole::Fee,
+    }))
 }
 
 fn base_sign(kind: TransactionKind) -> Decimal {

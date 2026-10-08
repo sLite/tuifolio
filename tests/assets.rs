@@ -89,7 +89,6 @@ fn stock_transaction(store: &Store) -> ManualTransactionInput {
         kind: TransactionKind::Buy,
         base_asset_id: store.asset_by_symbol("AAPL").unwrap().id,
         base_amount: dec!(2),
-        base_ledger_effect: LedgerEffect::Post,
         quote_asset_id: Some(store.asset_by_symbol("EUR").unwrap().id),
         quote_amount: Some(dec!(150)),
         quote_ledger_effect: LedgerEffect::Ignore,

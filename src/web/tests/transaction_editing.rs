@@ -21,10 +21,6 @@ fn form_body(form: &TransactionForm) -> String {
         ("kind", form.kind.clone()),
         ("base_asset_id", form.base_asset_id.clone()),
         ("base_amount", form.base_amount.clone()),
-        (
-            "base_ledger_effect",
-            format!("{:?}", form.base_ledger_effect),
-        ),
         ("quote_asset_id", form.quote_asset_id.clone()),
         ("quote_amount", form.quote_amount.clone()),
         ("quote_ledger_effect", form.quote_ledger_effect.clone()),
@@ -59,7 +55,8 @@ async fn transaction_rows_link_to_editing_the_transaction_and_prefill_all_values
     assert!(page.contains("Edit transaction"));
     assert!(page.contains("value=\"0.1\""));
     assert!(page.contains("&lt;script&gt;") || page.contains("&#60;script&#62;"));
-    assert!(page.contains("Asset balance effect"));
+    assert!(!page.contains("Asset balance effect"));
+    assert!(!page.contains("base_ledger_effect"));
     assert!(page.contains(&format!("action=\"/transactions/{id}/delete\"")));
 }
 
@@ -70,11 +67,9 @@ async fn editing_preserves_id_and_origin_and_persists_rebuilt_balances() {
     let mut form = existing_form(&fixture);
     form.base_amount = "0.333333333333333333".into();
     form.notes = "Updated transaction".into();
+    let body = format!("{}&base_ledger_effect=Ignore", form_body(&form));
     let response = fixture
-        .post(
-            &format!("/transactions/{}/edit", previous.id),
-            &form_body(&form),
-        )
+        .post(&format!("/transactions/{}/edit", previous.id), &body)
         .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert!(
@@ -129,7 +124,7 @@ async fn invalid_edits_preserve_input_and_do_not_modify_storage() {
 }
 
 #[tokio::test]
-async fn no_op_edits_preserve_submillisecond_timestamps_and_ignored_postings() {
+async fn no_op_edits_preserve_submillisecond_timestamps_and_cost_basis_only() {
     let fixture = TestApp::new(true);
     fixture
         .state
@@ -137,7 +132,7 @@ async fn no_op_edits_preserve_submillisecond_timestamps_and_ignored_postings() {
             store.data.transactions[0].timestamp =
                 chrono::DateTime::parse_from_rfc3339("2026-10-08T12:30:14.123456789Z")?
                     .with_timezone(&chrono::Utc);
-            store.data.transactions[0].base_ledger_effect = LedgerEffect::Ignore;
+            store.data.transactions[0].quote_ledger_effect = LedgerEffect::Ignore;
             crate::ledger::rebuild_ledger(&mut store.data)
         })
         .await

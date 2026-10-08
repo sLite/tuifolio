@@ -67,7 +67,8 @@ The ledger-first JSON datastore lives in the platform's local data directory
 under `tuifolio/store.json`, unless you supply `--store`.
 
 - Tracks portfolios, assets, transactions, ledger entries, and prices.
-- Buys and sells explicitly control which sides post to ledger balances.
+- Every transaction posts its asset movement to ledger balances. Buys and sells
+  can optionally post their quote/cash movement.
 - Property and mortgage liabilities remain separate assets.
 - Configured stock splits apply when the ledger is rebuilt. They target asset IDs;
   no ticker-specific split events are inserted automatically.
@@ -88,7 +89,7 @@ records with invalid amounts or incomplete buy/sell quotes need correction
 before an edit can be saved; they can still be viewed and deleted. Loading a
 store does not repair or reject these records automatically.
 
-The editor preserves explicit asset and quote posting controls and timestamp
+The editor preserves the cash effect setting and timestamp
 precision on unchanged dates. Deleting removes the transaction and its ledger
 effects, while retaining asset definitions, portfolios, and prices. Failed saves
 roll back the edit or deletion.
@@ -145,8 +146,8 @@ normal; the operating system releases its lock when the process exits.
 
 ### Legacy datastore fields retained for later cleanup
 
-The datastore's JSON structure is intentionally retained in this release. CSV
-processing and its runtime workarounds are gone, but existing data is preserved.
+CSV processing and its runtime workarounds are gone. The historical fields below
+remain in the datastore.
 
 | Field | Current behavior | Later cleanup |
 | --- | --- | --- |
@@ -159,9 +160,13 @@ Existing transactions originally created from CSV, including property/mortgage
 history, remain ordinary ledger records. This change does not rewrite or delete
 them, clear raw rows, or reset IDs.
 
-Posting effects, intrinsic valuation currencies, prices and their sources, and
-asset-ID stock split events are active accounting features, not obsolete import
-fields. Existing configured split events continue to affect balances.
+Quote/cash posting effects, intrinsic valuation currencies, prices and their
+sources, and asset-ID stock split events are active accounting features, not
+obsolete import fields. Existing configured split events continue to affect balances.
+
+The asset-side `base_ledger_effect` field and "Record only" option have been
+removed. Older stores still load, but that field is ignored and omitted on the
+next save. Asset movements always post when the ledger is rebuilt.
 
 The obsolete symbol-based stock-split field and conversion code were removed.
 Splits must already reference asset IDs; old symbol-only configurations are no
