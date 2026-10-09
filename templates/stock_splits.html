@@ -1,0 +1,20 @@
+<section class="panel editor split-editor" aria-labelledby="stock-splits-heading">
+  <h2 id="stock-splits-heading">Stock splits <span class="count">{{ splits.len() }}</span></h2>
+  <p class="description">Enter the number of new shares for each old share. A 4 : 1 split turns 10 shares into 40; a 1 : 10 reverse split turns 10 into 1.</p>
+  <p class="field-help">Saving rebuilds balances immediately. Only this asset's transactions before the effective date in UTC are adjusted. Original transactions, cash amounts, fees, and prices stay as recorded.</p>
+  <form class="split-form" action="/assets/{{ id }}/splits" method="post" hx-disabled-elt="find button[type='submit']">
+    <h3>{% if split_form.is_edit() %}Edit split{% else %}Add split{% endif %}</h3>
+    {% if !split_error.is_empty() %}<div class="notice error" role="alert">{{ split_error }}</div>{% endif %}
+    {% let form = split_form %}{% include "split_fields.html" %}
+    <div class="split-actions"><button class="button primary" type="submit">{% if split_form.is_edit() %}Save split{% else %}Add split{% endif %}</button>{% if split_form.is_edit() %}<a class="button" href="/assets/{{ id }}">Cancel edit</a>{% endif %}</div>
+  </form>
+  {% for split in splits %}
+  <details class="split-record">
+    <summary><span>{{ split.effective_date }}</span><span class="split-ratio">{{ split.numerator }} : {{ split.denominator }}</span><span class="text-link">Edit</span></summary>
+    <form class="split-form" action="/assets/{{ id }}/splits" method="post" hx-disabled-elt="find button[type='submit']">
+      {% let form = split %}{% include "split_fields.html" %}
+      <div class="split-actions"><button class="button" type="submit">Save split</button><button class="button danger" type="submit" formaction="/assets/{{ id }}/splits/delete" formnovalidate>Delete split</button></div>
+    </form>
+  </details>
+  {% else %}<p class="field-help">No stock splits recorded for this asset.</p>{% endfor %}
+</section>

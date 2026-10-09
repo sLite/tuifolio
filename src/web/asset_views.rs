@@ -4,6 +4,7 @@ use super::{
     asset_forms::AssetForm,
     forms::PriceForm,
     query::PageQuery,
+    split_forms::{SplitForm, split_forms},
     tables::{PriceView, asset_kind, chart_url, prices},
     views::{ASSET_KINDS, Choice, Common, enum_choices},
 };
@@ -140,6 +141,9 @@ pub(super) struct AssetEditorPage {
     pub manual_pricing: bool,
     pub price_form: PriceForm,
     pub price_error: String,
+    pub splits: Vec<SplitForm>,
+    pub split_form: SplitForm,
+    pub split_error: String,
     pub quotes: Vec<PriceView>,
     pub transactions: usize,
     pub chart_url: Option<String>,
@@ -168,6 +172,9 @@ impl AssetEditorPage {
                 ..PriceForm::default()
             },
             price_error: String::new(),
+            splits: split_forms(data, id),
+            split_form: SplitForm::default(),
+            split_error: String::new(),
             quotes: prices(data)
                 .into_iter()
                 .filter(|price| Some(price.asset_id) == id)
@@ -182,6 +189,12 @@ impl AssetEditorPage {
     pub fn with_price_error(mut self, form: PriceForm, error: String) -> Self {
         self.price_form = form;
         self.price_error = error;
+        self
+    }
+
+    pub fn with_split_error(mut self, form: SplitForm, error: String) -> Self {
+        self.split_form = form;
+        self.split_error = error;
         self
     }
 }

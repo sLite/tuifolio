@@ -158,6 +158,18 @@ legend { width: 100%; font-size: 19px; font-weight: 500; padding: 0 0 18px; marg
 .form-actions { display: flex; gap: 14px; justify-content: flex-end; padding-top: 29px; margin-top: 29px; border-top: 1px solid var(--border); }
 .editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 384px; gap: 29px; align-items: start; }
 .editor-layout .editor { max-width: none; }
+.asset-editor-column { min-width: 0; }
+.asset-editor-column > .panel + .panel { margin-top: 29px; }
+.split-editor .description { font-size: 15px; }
+.split-form { margin-top: 24px; }
+.split-form h3 { margin: 0 0 18px; font-size: 16px; font-weight: 500; }
+.split-fields { grid-template-columns: minmax(180px, 1.4fr) 1fr 1fr; gap: 18px; }
+.split-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 24px; }
+.split-record { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+.split-record > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.split-record > summary::before { content: "+"; color: var(--accent); }
+.split-record[open] > summary::before { content: "−"; }
+.split-ratio { margin-left: auto; font: 15px var(--numbers); color: var(--accent); }
 .asset-kind { margin-top: 8px; color: var(--muted); }
 .provider-symbol { color: var(--text); }
 .quote-line + .quote-line { margin-top: 14px; }
@@ -227,7 +239,7 @@ input[readonly] { color: var(--muted); border-style: dashed; }
   .notice { align-items: flex-start; flex-direction: column; gap: 12px; }
   .panel-heading, .filters { padding: 22px; }
   .filters > label, .filters > .field, .filters .search-field { flex: 1; max-width: none; min-width: 100%; }
-  .form-grid, .price-editor { grid-template-columns: 1fr; }
+  .form-grid, .price-editor, .split-fields { grid-template-columns: 1fr; }
   .editor { padding: 26px 22px; }
   .price-editor .button { width: 100%; }
   .pagination { padding: 19px 22px; flex-wrap: wrap; }

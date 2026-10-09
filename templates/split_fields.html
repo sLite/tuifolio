@@ -1,0 +1,8 @@
+<input type="hidden" name="original_date" value="{{ form.original_date }}">
+<input type="hidden" name="original_numerator" value="{{ form.original_numerator }}">
+<input type="hidden" name="original_denominator" value="{{ form.original_denominator }}">
+<div class="form-grid split-fields">
+  <label>Effective date <span class="optional">UTC</span><input type="date" name="effective_date" value="{{ form.effective_date }}" required></label>
+  <label>New shares<input name="numerator" value="{{ form.numerator }}" inputmode="decimal" placeholder="e.g. 4" required></label>
+  <label>Old shares<input name="denominator" value="{{ form.denominator }}" inputmode="decimal" placeholder="e.g. 1" required></label>
+</div>

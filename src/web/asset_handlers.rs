@@ -54,6 +54,8 @@ pub(super) async fn asset(
     let notice = match query.notice.as_str() {
         "saved" => "Asset saved.",
         "price-added" => "Manual price saved.",
+        "split-saved" => "Stock split saved. Ledger balances rebuilt.",
+        "split-deleted" => "Stock split deleted. Ledger balances rebuilt.",
         _ => "",
     };
     editor_page(&state, Some(id), None, Feedback::notice(notice)).await
@@ -78,7 +80,7 @@ async fn editor_page(
     render(AssetEditorPage::new(&data, asset, form, feedback))
 }
 
-fn find_asset(data: &StoreData, id: Id) -> Result<&Asset, WebError> {
+pub(super) fn find_asset(data: &StoreData, id: Id) -> Result<&Asset, WebError> {
     data.assets
         .iter()
         .find(|asset| asset.id == id)

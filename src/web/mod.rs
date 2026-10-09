@@ -8,6 +8,8 @@ mod navigation;
 mod portfolio_handlers;
 mod price_refresh;
 mod query;
+mod split_forms;
+mod split_handlers;
 mod state;
 mod tables;
 mod transaction_handlers;
@@ -136,6 +138,8 @@ fn asset_routes() -> Router<AppState> {
             get(asset_handlers::asset).post(asset_handlers::update_asset),
         )
         .route("/assets/{id}/prices", post(asset_handlers::create_price))
+        .route("/assets/{id}/splits", post(split_handlers::save))
+        .route("/assets/{id}/splits/delete", post(split_handlers::delete))
         .route("/assets/sync", post(asset_handlers::sync_prices))
 }
 

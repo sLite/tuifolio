@@ -139,7 +139,15 @@ fn split_adjusted_amount(
         }
         let effective_date = NaiveDate::parse_from_str(&split.effective_date, "%Y-%m-%d")?;
         if transaction_date < effective_date {
-            adjusted *= split.numerator / split.denominator;
+            adjusted = split
+                .numerator
+                .checked_div(split.denominator)
+                .and_then(|ratio| adjusted.checked_mul(ratio))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "split-adjusted quantity is outside the supported decimal range"
+                    )
+                })?;
         }
     }
     Ok(adjusted)

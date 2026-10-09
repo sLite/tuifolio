@@ -5,6 +5,7 @@ pub mod ledger;
 pub mod model;
 pub mod portfolios;
 pub mod price_sync;
+pub mod stock_splits;
 pub mod store;
 pub mod transactions;
 pub mod web;

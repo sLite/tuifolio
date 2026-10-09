@@ -4,6 +4,7 @@
 <div class="page-heading"><div><p class="eyebrow">Instrument settings</p><h1>{{ common.title }}</h1><p class="description">{% if let Some(id) = id %}{{ form.symbol }} · Asset #{{ id }}{% else %}Configure an asset before recording its first transaction.{% endif %}</p></div>{% if let Some(id) = id %}<a class="button" href="/transactions/new?asset={{ id }}">+ Add transaction</a>{% endif %}</div>
 {% if !notice.is_empty() %}<div class="notice success" role="status">{{ notice }}</div>{% endif %}
 <div class="editor-layout">
+  <div class="asset-editor-column">
   <form class="editor panel" action="{% if let Some(id) = id %}/assets/{{ id }}{% else %}/assets/new{% endif %}" method="post" data-asset-form hx-disabled-elt="find button[type='submit']">
     {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
     <fieldset><legend><span class="section-number">01</span> Identity</legend><div class="form-grid">
@@ -20,6 +21,8 @@
     <div class="form-actions"><a class="button" href="/assets">Cancel</a><button class="button primary" type="submit">Save asset</button></div>
     <datalist id="valuation-currencies">{% for currency in common.currencies %}<option value="{{ currency }}"></option>{% endfor %}</datalist>
   </form>
+  {% if let Some(id) = id %}{% include "stock_splits.html" %}{% endif %}
+  </div>
   <aside>
     {% if let Some(id) = id %}
     <section class="panel editor-context"><h2>Related records</h2><a class="context-link" href="/transactions?asset={{ id }}&scope=any">{{ transactions }} transactions <span aria-hidden="true">→</span></a>{% if let Some(url) = chart_url %}<a class="context-link" href="{{ url }}" target="_blank" rel="noopener noreferrer" hx-boost="false">TradingView chart <span aria-hidden="true">↗</span></a>{% endif %}</section>

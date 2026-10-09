@@ -78,7 +78,8 @@ runtime option; it adds no datastore fields.
   an editor for its display name, type, Yahoo symbol, TradingView symbol, and
   intrinsic valuation currency, alongside its recorded quotes and transaction
   links. Record manual prices in the editor after saving an asset without a Yahoo
-  symbol. Assets can be created before their first transaction.
+  symbol. Manage dated stock splits in the same editor. Assets can be created
+  before their first transaction.
 - The **Base** selector switches between configured valuation currencies on
   change and requires JavaScript.
 - Search filters submit automatically after a 300 ms typing pause or immediately
@@ -193,6 +194,26 @@ JavaScript enabled. Switching to another type omits intrinsic valuation on save.
 
 Currency assets used in accounting must retain a Cash or Crypto type. Their
 display names and provider settings remain editable.
+
+### Stock splits
+
+Open an existing asset's editor and use **Stock splits** to add an effective date
+and a ratio of new shares to old shares. For example, `4 : 1` multiplies quantities
+by four, while `1 : 10` records a reverse split. Expand a recorded split to edit
+its date or ratio, or use **Delete split** to remove it. Splits are listed newest
+first and are scoped to the asset's ID, even when assets share a symbol.
+
+Saving or deleting a split rebuilds ledger balances immediately across portfolios.
+It adjusts only the asset-side quantities of transactions before the effective
+date in UTC. Transactions on that date are already treated as post-split. The date
+is a transaction cutoff, not a scheduled job; future-dated splits also apply
+immediately. Original transactions, quote amounts, fees, and recorded prices are
+retained. Multiple splits compound under the existing ledger rules.
+
+Dates must use `YYYY-MM-DD`; ratio values must be positive decimals and must change
+the quantity. Only one split per asset and date can be saved. Failed validation,
+ledger rebuilds, or disk writes retain the current data. Edits and deletions check
+the original split values and reject forms for splits that have since changed.
 
 ### Portfolios
 
