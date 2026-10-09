@@ -5,7 +5,7 @@ use super::{
     query::{AssetScope, PAGE_SIZE, PageQuery},
     tables::{HoldingView, PortfolioView, Summary, TransactionView},
 };
-use crate::model::StoreData;
+use crate::model::{Id, StoreData, Transaction, TransactionKind};
 
 pub(super) struct Common {
     pub title: String,
@@ -119,16 +119,43 @@ pub(super) const ASSET_KINDS: &[(&str, &str)] = &[
     ("Custom", "Custom"),
     ("Liability", "Liability"),
 ];
-pub(super) const TRANSACTION_KINDS: &[(&str, &str)] = &[
-    ("Buy", "Buy"),
-    ("Sell", "Sell"),
-    ("Deposit", "Deposit"),
-    ("Withdraw", "Withdraw"),
-    ("AssetIncrease", "Asset increase"),
-    ("AssetDecrease", "Asset decrease"),
-    ("LiabilityIncrease", "Liability increase"),
-    ("LiabilityDecrease", "Liability decrease"),
+const TRANSACTION_KINDS: &[(TransactionKind, &str)] = &[
+    (TransactionKind::Buy, "Buy"),
+    (TransactionKind::Sell, "Sell"),
+    (TransactionKind::Gift, "Gift"),
+    (TransactionKind::Deposit, "Deposit"),
+    (TransactionKind::Withdraw, "Withdraw"),
+    (TransactionKind::AssetIncrease, "Asset increase"),
+    (TransactionKind::AssetDecrease, "Asset decrease"),
+    (TransactionKind::LiabilityIncrease, "Liability increase"),
+    (TransactionKind::LiabilityDecrease, "Liability decrease"),
 ];
+
+pub(super) struct TransactionKindChoice {
+    pub value: String,
+    pub label: &'static str,
+    pub selected: bool,
+    pub supports_quote: bool,
+    pub requires_quote: bool,
+    pub implicit_zero_cost_basis: bool,
+}
+
+fn transaction_kind_choices(selected: &str) -> Vec<TransactionKindChoice> {
+    TRANSACTION_KINDS
+        .iter()
+        .map(|(kind, label)| {
+            let value = format!("{kind:?}");
+            TransactionKindChoice {
+                selected: value == selected,
+                value,
+                label,
+                supports_quote: kind.supports_quote(),
+                requires_quote: kind.requires_quote(),
+                implicit_zero_cost_basis: kind.has_implicit_zero_cost_basis(),
+            }
+        })
+        .collect()
+}
 
 #[derive(Template)]
 #[template(path = "overview.html")]
@@ -250,19 +277,39 @@ fn matching_transactions<'a>(
     transactions
 }
 
+pub(super) struct TransactionDetails {
+    pub id: Id,
+    pub source: String,
+    pub exchange: String,
+    pub broker: String,
+}
+
+impl From<&Transaction> for TransactionDetails {
+    fn from(transaction: &Transaction) -> Self {
+        Self {
+            id: transaction.id,
+            source: transaction.source.clone(),
+            exchange: transaction.exchange.clone().unwrap_or_default(),
+            broker: transaction.broker.clone().unwrap_or_default(),
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "transaction_form.html")]
 pub(super) struct TransactionPage {
     pub common: Common,
     pub id: Option<crate::model::Id>,
-    pub source: String,
+    pub details: Option<TransactionDetails>,
     pub form: TransactionForm,
     pub error: String,
     pub portfolios: Vec<Choice>,
     pub assets: Vec<Choice>,
     pub quote_assets: Vec<Choice>,
     pub fee_assets: Vec<Choice>,
-    pub kinds: Vec<Choice>,
+    pub kinds: Vec<TransactionKindChoice>,
+    pub supports_quote: bool,
+    pub implicit_zero_cost_basis: bool,
 }
 
 impl TransactionPage {
@@ -272,29 +319,24 @@ impl TransactionPage {
         error: String,
         transaction: Option<&crate::model::Transaction>,
     ) -> Self {
-        let kinds = enum_choices(TRANSACTION_KINDS, &form.kind);
-        let assets = asset_choices(data, form.base_asset_id.parse().ok());
-        let quote_assets = asset_choices(data, form.quote_asset_id.parse().ok());
-        let fee_assets = asset_choices(data, form.fee_asset_id.parse().ok());
         let query = PageQuery {
             portfolio: form.portfolio_id.parse().ok(),
             ..PageQuery::default()
         };
-        let portfolios = portfolio_choices(data, &query);
         let id = transaction.map(|transaction| transaction.id);
         Self {
             common: transaction_common(data, id),
             id,
-            source: transaction
-                .map(|transaction| transaction.source.clone())
-                .unwrap_or_default(),
-            form,
+            details: transaction.map(TransactionDetails::from),
             error,
-            portfolios,
-            assets,
-            quote_assets,
-            fee_assets,
-            kinds,
+            portfolios: portfolio_choices(data, &query),
+            assets: asset_choices(data, form.base_asset_id.parse().ok()),
+            quote_assets: asset_choices(data, form.quote_asset_id.parse().ok()),
+            fee_assets: asset_choices(data, form.fee_asset_id.parse().ok()),
+            kinds: transaction_kind_choices(&form.kind),
+            supports_quote: form.supports_quote(),
+            implicit_zero_cost_basis: form.has_implicit_zero_cost_basis(),
+            form,
         }
     }
 }

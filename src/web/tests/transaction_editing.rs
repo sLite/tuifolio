@@ -120,6 +120,7 @@ async fn invalid_edits_preserve_input_and_do_not_modify_storage() {
     assert!(page.contains("value=\"-1\""));
     assert!(page.contains("Keep this text"));
     assert!(page.contains("Save changes"));
+    assert!(page.contains("transaction-sidebar"));
     assert_eq!(serde_json::to_value(fixture.persisted()).unwrap(), before);
 }
 
@@ -319,7 +320,7 @@ async fn invalid_unchanged_records_must_be_corrected_before_editing() {
     fixture
         .state
         .edit(|store| {
-            store.data.transactions[0].quote_amount = Some(rust_decimal::Decimal::ZERO);
+            store.data.transactions[0].quote_amount = Some(dec!(-1));
             Ok(())
         })
         .await
@@ -335,7 +336,7 @@ async fn invalid_unchanged_records_must_be_corrected_before_editing() {
         StatusCode::UNPROCESSABLE_ENTITY,
     )
     .await;
-    assert!(page.contains("quote amount must be greater than zero"));
+    assert!(page.contains("quote amount cannot be negative"));
     assert_eq!(serde_json::to_value(fixture.persisted()).unwrap(), original);
     form.quote_amount = "100".into();
     assert_eq!(

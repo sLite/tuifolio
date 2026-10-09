@@ -7,7 +7,10 @@ use std::{
 
 use anyhow::Context;
 
-use crate::model::{Asset, StoreData};
+use crate::{
+    ledger::rebuild_ledger,
+    model::{Asset, StoreData},
+};
 
 #[derive(Clone)]
 pub struct Store {
@@ -20,7 +23,13 @@ impl Store {
     pub fn open(path: Option<PathBuf>) -> anyhow::Result<Self> {
         let path = path.unwrap_or(default_store_path()?);
         let lock = lock_store(&path)?;
-        let data = load_data(&path)?;
+        let mut data = load_data(&path)?;
+        rebuild_ledger(&mut data)
+            .with_context(|| format!("failed to rebuild ledger for {}", path.display()))?;
+        tracing::debug!(
+            entries = data.ledger_entries.len(),
+            "datastore ledger rebuilt"
+        );
         Ok(Self {
             path,
             _lock: Arc::new(lock),

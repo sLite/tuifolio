@@ -56,19 +56,23 @@ runtime option; it adds no datastore fields.
 - **Overview** shows net worth, assets, liabilities, unrealized PnL, and holdings.
   Filter holdings by portfolio or search by symbol and name. Missing valuations
   and negative non-liability balances are identified explicitly.
-- **Portfolios** shows account totals and lets you create empty portfolios.
-  Open a portfolio for its holdings and links to filtered transactions.
+- **Portfolios** shows account totals and unrealized PnL, and lets you create
+  empty portfolios. Open a portfolio for its net worth, assets, liabilities,
+  unrealized PnL, holdings, and links to filtered transactions.
 - **Transactions** has portfolio, asset, and text filters, with 50 entries per
   page. Asset scope can match the primary asset or any side, including quote
   currencies and fees. Each row's **Edit** link opens that transaction. Update
-  its fields or use **Delete transaction** on the editor to remove it. Expand
-  a row for its source, broker, exchange, and notes.
+  its fields or use **Delete transaction** on the editor to remove it. Notes appear
+  directly in the table, with line breaks preserved. The edit page uses the same
+  two-column layout as the asset editor, with entry, source, exchange, and broker
+  details in a side panel. The sidebar stacks below the form on smaller screens.
 - **Add transaction** selects an existing portfolio by ID, with primary, quote,
   and fee assets selected from the asset directory. Asset choices show their
   symbol, name, and type, with IDs to distinguish duplicate symbols. Create an
   asset in **Assets** and a portfolio in **Portfolios** before using them in a
   transaction. Dates and times are entered in UTC. Validation errors preserve
-  entries and selections.
+  entries and selections. Notes are always visible in the editor's **Transaction**
+  section; fees, exchange, and broker fields are in a collapsible section.
 - **Assets** lists instruments and recorded prices. Search by name, type, or
   provider symbol and refresh Yahoo prices. Each asset has
   an editor for its display name, type, Yahoo symbol, TradingView symbol, and
@@ -93,8 +97,10 @@ The ledger-first JSON datastore lives in the platform's local data directory
 under `tuifolio/store.json`, unless you supply `--store`.
 
 - Tracks portfolios, assets, transactions, ledger entries, and prices.
-- Every transaction posts its asset movement to ledger balances. Buys and sells
-  can optionally post their quote/cash movement.
+- Every transaction posts its asset movement to ledger balances. Buys, sells,
+  and quoted asset increases/decreases can optionally post their cash movement.
+- Ledger balances rebuild from transactions when opening the datastore and after
+  transaction edits, so stored ledger entries follow the current accounting rules.
 - Property and mortgage liabilities remain separate assets.
 - Configured stock splits apply when the ledger is rebuilt. They target asset IDs;
   no ticker-specific split events are inserted automatically.
@@ -105,6 +111,34 @@ under `tuifolio/store.json`, unless you supply `--store`.
 
 Manual buys and sells require an asset quantity, an existing quote asset, and a
 total quote amount. The quote amount supplies cost basis or proceeds for PnL.
+Quote amounts may be zero but cannot be negative; asset quantities must remain
+positive. An explicit zero quote records a known zero cost basis and needs no
+exchange rate for that cost basis.
+If no cost basis has been recorded for a holding, its PnL is unavailable. Zero
+quotes create no cash movement, even with **Post cash movement** selected.
+
+**Gift** records an incoming asset with an implicit zero acquisition cost. Enter
+the positive quantity received; no quote currency, amount, or cash effect is
+needed. Its zero cost basis is derived from the transaction type, so the stored
+quote fields remain empty. The transaction list shows `0` and **Zero cost basis**.
+Gifts contribute zero to net invested and create no quote-side cash movement.
+Fees can still be recorded and deduct from the selected fee asset.
+
+**Asset increase** accepts an optional quote amount as acquisition cost, like
+**Buy**. **Asset decrease** accepts an optional quote amount as proceeds, like
+**Sell**. Costs add to net invested; proceeds subtract from it. Valuation-only
+increases or decreases can omit the quote without changing recorded costs or
+proceeds. For example, a property initially valued at 255000 EUR with a 420000 EUR
+cost, followed by an unquoted valuation increase of 245000 EUR, has a 500000 EUR
+value, 420000 EUR net invested, and 80000 EUR PnL.
+
+The quote and cash fields appear only for **Buy**, **Sell**, **Asset increase**,
+and **Asset decrease**. Changing the type hides and disables inapplicable fields;
+their values are omitted on save. **Deposit**, **Withdraw**, **Liability increase**,
+**Liability decrease**, and **Gift** reject quote assets and amounts. Old quotes
+on deposit, withdrawal, and liability types are ignored when calculating PnL and
+do not establish a zero cost basis.
+
 Transactions reference portfolio and asset IDs and never create portfolios or
 change asset definitions.
 Fee assets and fee amounts must be supplied together.
@@ -124,10 +158,11 @@ The transaction form's cash effect has two choices:
 
 - **Cost basis only** records the quote amount for PnL without changing cash
   holdings. Use this when broker or exchange cash balances are not tracked.
-- **Post cash movement** also posts the quote side. Buys reduce cash and sells
-  increase it. Use this when cash deposits, withdrawals, and balances are tracked.
+- **Post cash movement** also posts the quote side. Buys and asset increases
+  reduce cash; sells and asset decreases increase it. Use this when cash deposits,
+  withdrawals, and balances are tracked.
 
-Fees always post to the ledger when supplied.
+Fees apply to every transaction type and always post to the ledger when supplied.
 
 ### Asset settings
 
@@ -166,6 +201,10 @@ transaction form. Names are trimmed, limited to 200 characters, and checked for
 duplicates without regard to ASCII letter case. Transactions select existing
 portfolio IDs, including distinct legacy portfolios that share a name. Portfolio
 creation does not create assets or transactions.
+
+Portfolio PnL sums the holdings with both a valuation and a recorded cost basis,
+using the selected base currency. The portfolio list and detail totals show the
+same value, with positive and negative amounts colored like the overview.
 
 ### Saving data
 

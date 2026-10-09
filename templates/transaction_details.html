@@ -1,0 +1,18 @@
+<aside class="transaction-sidebar" aria-label="Transaction details">
+  <section class="panel editor-context transaction-context">
+    <h2>Transaction details</h2>
+    <dl>
+      <dt>Entry</dt><dd>#{{ details.id }}</dd>
+      <dt>Source</dt><dd>{{ details.source }}</dd>
+      {% if !details.exchange.is_empty() %}<dt>Exchange</dt><dd>{{ details.exchange }}</dd>{% endif %}
+      {% if !details.broker.is_empty() %}<dt>Broker</dt><dd>{{ details.broker }}</dd>{% endif %}
+    </dl>
+  </section>
+  <section class="panel editor-context delete-section">
+    <h2>Delete entry #{{ details.id }}</h2>
+    <p class="description">Removes this transaction and its ledger movements. Assets, portfolios, and recorded prices are retained.</p>
+    <form action="/transactions/{{ details.id }}/delete" method="post" hx-disabled-elt="find button">
+      <button class="button danger" type="submit">Delete transaction</button>
+    </form>
+  </section>
+</aside>

@@ -77,9 +77,8 @@ fn quote_entry(
     else {
         return Ok(None);
     };
-    let sign = quote_sign(transaction.kind);
-    if sign.is_zero() || amount.is_zero() || transaction.quote_ledger_effect == LedgerEffect::Ignore
-    {
+    let cash_delta = transaction.kind.quote_cash_delta(amount);
+    if cash_delta.is_zero() || transaction.quote_ledger_effect == LedgerEffect::Ignore {
         return Ok(None);
     }
     require_asset(assets, asset_id, transaction.id, LedgerRole::Quote)?;
@@ -87,7 +86,7 @@ fn quote_entry(
         transaction_id: transaction.id,
         portfolio_id: transaction.portfolio_id,
         asset_id,
-        quantity_delta: amount * sign,
+        quantity_delta: cash_delta,
         role: LedgerRole::Quote,
     }))
 }
@@ -115,6 +114,7 @@ fn fee_entry(
 fn base_sign(kind: TransactionKind) -> Decimal {
     match kind {
         TransactionKind::Buy
+        | TransactionKind::Gift
         | TransactionKind::Deposit
         | TransactionKind::AssetIncrease
         | TransactionKind::LiabilityIncrease => Decimal::ONE,
@@ -122,19 +122,6 @@ fn base_sign(kind: TransactionKind) -> Decimal {
         | TransactionKind::Withdraw
         | TransactionKind::AssetDecrease
         | TransactionKind::LiabilityDecrease => -Decimal::ONE,
-    }
-}
-
-fn quote_sign(kind: TransactionKind) -> Decimal {
-    match kind {
-        TransactionKind::Buy => -Decimal::ONE,
-        TransactionKind::Sell => Decimal::ONE,
-        TransactionKind::Deposit
-        | TransactionKind::Withdraw
-        | TransactionKind::AssetIncrease
-        | TransactionKind::AssetDecrease
-        | TransactionKind::LiabilityIncrease
-        | TransactionKind::LiabilityDecrease => Decimal::ZERO,
     }
 }
 

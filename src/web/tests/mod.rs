@@ -1,7 +1,12 @@
+mod asset_quotes;
 mod assets;
 mod fixture;
+mod gifts;
 mod manual_prices;
+mod portfolio_pnl;
 mod portfolios;
+mod quote_visibility;
+mod transaction_details;
 mod transaction_editing;
 mod transactions;
 

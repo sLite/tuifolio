@@ -1,13 +1,15 @@
 <div class="table-scroll" tabindex="0" role="region" aria-label="Holdings table">
   <table>
-    <thead><tr><th scope="col">Asset</th><th scope="col">Portfolio</th><th scope="col" class="number">Quantity</th><th scope="col" class="number">Value · {{ common.base }}</th><th scope="col" class="number">Net invested</th><th scope="col" class="number">Unrealized PnL</th><th scope="col">Actions</th></tr></thead>
+    <thead><tr>{% if common.section == "overview" %}<th scope="col">Portfolio</th><th scope="col" class="number">Quantity</th><th scope="col">Asset</th>{% else %}<th scope="col">Asset</th><th scope="col">Portfolio</th><th scope="col" class="number">Quantity</th>{% endif %}<th scope="col" class="number">Value</th><th scope="col" class="number">Net invested</th><th scope="col" class="number">Unrealized PnL</th><th scope="col">Actions</th></tr></thead>
     <tbody>
       {% for holding in holdings %}
       <tr>
+        {% if common.section == "overview" %}<td>{{ holding.portfolio }}</td>{% else %}
         <td><a class="asset-link" href="{{ holding.transactions_url }}">{{ holding.symbol }}</a><span class="cell-subtitle">{{ holding.name }} <span class="asset-type">{{ holding.kind }}</span></span></td>
-        <td>{{ holding.portfolio }}</td>
+        <td>{{ holding.portfolio }}</td>{% endif %}
         <td class="number {% if holding.negative %}negative{% endif %}">{{ holding.quantity }}{% if holding.negative %}<span class="cell-subtitle negative">Negative balance</span>{% endif %}</td>
-        <td class="number {% if holding.missing %}warning-text{% endif %}">{{ holding.value.text }}{% if holding.missing %}<a class="cell-subtitle warning-text" href="/assets/{{ holding.asset_id }}">Set up pricing</a>{% endif %}</td>
+        {% if common.section == "overview" %}<td><a class="asset-link" href="{{ holding.transactions_url }}">{{ holding.symbol }}</a><span class="cell-subtitle">{{ holding.name }} <span class="asset-type">{{ holding.kind }}</span></span></td>{% endif %}
+        <td class="number emphatic {% if holding.missing %}warning-text{% endif %}">{{ holding.value.text }}{% if holding.missing %}<a class="cell-subtitle warning-text" href="/assets/{{ holding.asset_id }}">Set up pricing</a>{% endif %}</td>
         <td class="number {% if holding.invested.text == "Unavailable" %}muted{% endif %}">{{ holding.invested.text }}</td>
         <td class="number {{ holding.pnl.tone }}">{{ holding.pnl.text }}</td>
         <td><div class="row-actions"><a href="{{ holding.add_url }}" aria-label="Add transaction for {{ holding.symbol }}">Add</a>{% if let Some(url) = holding.chart_url %}<a href="{{ url }}" target="_blank" rel="noopener noreferrer" hx-boost="false" aria-label="Open {{ holding.symbol }} chart in a new tab">Chart ↗</a>{% endif %}</div></td>

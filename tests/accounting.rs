@@ -115,6 +115,7 @@ fn every_transaction_kind_uses_the_expected_quantity_direction() {
     for (kind, expected) in [
         (TransactionKind::Buy, 10),
         (TransactionKind::Sell, -10),
+        (TransactionKind::Gift, 10),
         (TransactionKind::Deposit, 10),
         (TransactionKind::Withdraw, -10),
         (TransactionKind::AssetIncrease, 10),
@@ -181,4 +182,75 @@ fn accounting_ignores_origin_identifiers_and_preserved_raw_rows() {
         entries
     );
     assert_eq!(build_report(&store.data).net_value, value);
+}
+
+#[test]
+fn portfolio_pnl_is_scoped_to_each_portfolio_and_rolls_up_to_the_overview() {
+    let mut store = temp_store();
+    let gain = create_portfolio(&mut store, "Gain");
+    let loss = create_portfolio(&mut store, "Loss");
+    let empty = create_portfolio(&mut store, "Empty");
+    let property = intrinsic_asset(&mut store, "HOME", AssetKind::Property, "EUR");
+    let cash = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
+    for (portfolio, quantity, cost) in [(gain, 300, 100), (loss, 50, 100)] {
+        let mut input = movement(
+            portfolio,
+            property,
+            TransactionKind::AssetIncrease,
+            quantity,
+        );
+        input.quote_asset_id = Some(cash);
+        input.quote_amount = Some(Decimal::from(cost));
+        add_manual_transaction(&mut store, input).unwrap();
+    }
+    let report = build_report(&store.data);
+    for (id, expected) in [(gain, 200), (loss, -50), (empty, 0)] {
+        let portfolio = report
+            .portfolios
+            .iter()
+            .find(|portfolio| portfolio.id == id)
+            .unwrap();
+        assert_eq!(portfolio.unrealized_pnl, Decimal::from(expected));
+    }
+    assert_eq!(report.total_unrealized_pnl, Decimal::from(150));
+}
+
+#[test]
+fn portfolio_pnl_excludes_holdings_without_a_recorded_cost_basis() {
+    let mut store = temp_store();
+    let portfolio = create_portfolio(&mut store, "Main");
+    let known = intrinsic_asset(&mut store, "HOME", AssetKind::Property, "EUR");
+    let unknown = intrinsic_asset(&mut store, "UNKNOWN", AssetKind::Custom, "EUR");
+    let cash = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
+    let mut input = movement(portfolio, known, TransactionKind::AssetIncrease, 500000);
+    input.quote_asset_id = Some(cash);
+    input.quote_amount = Some(Decimal::from(420000));
+    add_manual_transaction(&mut store, input).unwrap();
+    post(
+        &mut store,
+        portfolio,
+        unknown,
+        TransactionKind::AssetIncrease,
+        900000,
+    );
+    let report = build_report(&store.data);
+    assert_eq!(report.portfolios[0].assets, Decimal::from(1400000));
+    assert_eq!(report.portfolios[0].unrealized_pnl, Decimal::from(80000));
+    assert_eq!(report.total_unrealized_pnl, Decimal::from(80000));
+}
+
+#[test]
+fn portfolio_pnl_excludes_unvalued_holdings_with_a_recorded_cost() {
+    let mut store = temp_store();
+    let portfolio = create_portfolio(&mut store, "Main");
+    let stock = create_asset(&mut store, "ABC", "Unpriced stock", AssetKind::Stock);
+    let cash = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
+    let mut input = movement(portfolio, stock, TransactionKind::Buy, 1);
+    input.quote_asset_id = Some(cash);
+    input.quote_amount = Some(Decimal::from(100));
+    add_manual_transaction(&mut store, input).unwrap();
+    let report = build_report(&store.data);
+    assert_eq!(report.portfolios[0].unrealized_pnl, Decimal::ZERO);
+    assert_eq!(report.portfolios[0].unresolved, 1);
+    assert_eq!(report.total_unrealized_pnl, Decimal::ZERO);
 }

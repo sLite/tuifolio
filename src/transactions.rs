@@ -125,7 +125,11 @@ fn manual_transaction(id: Id, portfolio_id: Id, input: ManualTransactionInput) -
         base_amount: input.base_amount,
         quote_asset_id: input.quote_asset_id,
         quote_amount: input.quote_amount,
-        quote_ledger_effect: input.quote_ledger_effect,
+        quote_ledger_effect: if input.kind.has_implicit_zero_cost_basis() {
+            LedgerEffect::Ignore
+        } else {
+            input.quote_ledger_effect
+        },
         fee_asset_id: input.fee_asset_id,
         fee_amount: input.fee_amount,
         exchange: clean_string(input.exchange),
@@ -169,23 +173,25 @@ fn validate_asset_ids(data: &StoreData, input: &ManualTransactionInput) -> anyho
 }
 
 fn validate_quote(input: &ManualTransactionInput) -> anyhow::Result<()> {
-    if matches!(input.kind, TransactionKind::Buy | TransactionKind::Sell) {
+    if !input.kind.supports_quote() {
+        anyhow::ensure!(
+            input.quote_asset_id.is_none() && input.quote_amount.is_none(),
+            "quote fields are only applicable to buys, sells, asset increases, and asset decreases"
+        );
+        return Ok(());
+    }
+    if input.kind.requires_quote() {
         anyhow::ensure!(
             input.quote_asset_id.is_some(),
             "quote asset is required for buys and sells"
         );
         anyhow::ensure!(
-            input
-                .quote_amount
-                .is_some_and(|amount| amount > Decimal::ZERO),
-            "quote amount must be greater than zero for buys and sells"
+            input.quote_amount.is_some(),
+            "quote amount is required for buys and sells"
         );
     }
     if let Some(amount) = input.quote_amount {
-        anyhow::ensure!(
-            amount > Decimal::ZERO,
-            "quote amount must be greater than zero when set"
-        );
+        anyhow::ensure!(amount >= Decimal::ZERO, "quote amount cannot be negative");
         anyhow::ensure!(
             input.quote_asset_id.is_some(),
             "quote asset is required when quote amount is set"

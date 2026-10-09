@@ -18,10 +18,16 @@ function scheduleSearchSubmission(event) {
   }, 300));
 }
 
-function updateTransactionRequirements(form) {
-  const trade = ["Buy", "Sell"].includes(form.elements.kind.value);
-  form.elements.quote_asset_id.required = trade || form.elements.quote_amount.value.trim() !== "";
-  form.elements.quote_amount.required = trade;
+function updateTransactionForm(form) {
+  const option = form.elements.kind.selectedOptions[0];
+  const supportsQuote = option.dataset.supportsQuote === "true";
+  const requiresQuote = option.dataset.requiresQuote === "true";
+  const quote = form.querySelector("[data-transaction-quote]");
+  quote.hidden = !supportsQuote;
+  quote.disabled = !supportsQuote;
+  form.querySelector("[data-gift-help]").hidden = option.dataset.implicitZeroCostBasis !== "true";
+  form.elements.quote_asset_id.required = supportsQuote && (requiresQuote || form.elements.quote_amount.value.trim() !== "");
+  form.elements.quote_amount.required = supportsQuote && requiresQuote;
   form.elements.fee_asset_id.required = form.elements.fee_amount.value.trim() !== "";
   form.elements.fee_amount.required = form.elements.fee_asset_id.value !== "";
 }
@@ -34,7 +40,7 @@ function updateIntrinsicValuation(form) {
 }
 
 function initializeForms(root) {
-  root.querySelectorAll("[data-transaction-form]").forEach(updateTransactionRequirements);
+  root.querySelectorAll("[data-transaction-form]").forEach(updateTransactionForm);
   root.querySelectorAll("[data-asset-form]").forEach(updateIntrinsicValuation);
 }
 
@@ -51,13 +57,13 @@ document.addEventListener("change", event => {
     updateIntrinsicValuation(form);
   }
   if (!form.hasAttribute("data-transaction-form")) return;
-  updateTransactionRequirements(form);
+  updateTransactionForm(form);
 });
 
 document.addEventListener("input", event => {
   scheduleSearchSubmission(event);
   const form = event.target.form;
-  if (form?.hasAttribute("data-transaction-form")) updateTransactionRequirements(form);
+  if (form?.hasAttribute("data-transaction-form")) updateTransactionForm(form);
 });
 
 document.addEventListener("compositionend", scheduleSearchSubmission);

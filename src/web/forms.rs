@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use super::query::PageQuery;
 use crate::{
-    model::{AssetKind, Id, LedgerEffect, StoreData, Transaction},
+    model::{AssetKind, Id, LedgerEffect, StoreData, Transaction, TransactionKind},
     transactions::ManualTransactionInput,
 };
 
@@ -83,6 +83,7 @@ impl TransactionForm {
 
     pub fn input(&self) -> anyhow::Result<ManualTransactionInput> {
         let timestamp = parse_timestamp(&self.timestamp)?;
+        let kind = enum_value(&self.kind, "transaction type")?;
         Ok(ManualTransactionInput {
             portfolio_id: self
                 .portfolio_id
@@ -90,7 +91,7 @@ impl TransactionForm {
                 .parse()
                 .context("choose an existing portfolio")?,
             timestamp,
-            kind: enum_value(&self.kind, "transaction type")?,
+            kind,
             base_asset_id: self
                 .base_asset_id
                 .trim()
@@ -99,16 +100,31 @@ impl TransactionForm {
             base_amount: decimal(&self.base_amount, "quantity")?,
             quote_asset_id: optional_asset_id(&self.quote_asset_id, "quote asset")?,
             quote_amount: optional_decimal(&self.quote_amount, "quote amount")?,
-            quote_ledger_effect: enum_value::<LedgerEffect>(
-                &self.quote_ledger_effect,
-                "cash effect",
-            )?,
+            quote_ledger_effect: self.cash_effect(kind)?,
             fee_asset_id: optional_asset_id(&self.fee_asset_id, "fee asset")?,
             fee_amount: optional_decimal(&self.fee_amount, "fee amount")?,
             exchange: optional(&self.exchange),
             broker: optional(&self.broker),
             notes: optional(&self.notes),
         })
+    }
+
+    pub fn supports_quote(&self) -> bool {
+        enum_value::<TransactionKind>(&self.kind, "transaction type")
+            .is_ok_and(TransactionKind::supports_quote)
+    }
+
+    pub fn has_implicit_zero_cost_basis(&self) -> bool {
+        enum_value::<TransactionKind>(&self.kind, "transaction type")
+            .is_ok_and(TransactionKind::has_implicit_zero_cost_basis)
+    }
+
+    fn cash_effect(&self, kind: TransactionKind) -> anyhow::Result<LedgerEffect> {
+        if !kind.supports_quote() && self.quote_ledger_effect.is_empty() {
+            Ok(LedgerEffect::Ignore)
+        } else {
+            enum_value(&self.quote_ledger_effect, "cash effect")
+        }
     }
 }
 

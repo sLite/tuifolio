@@ -1,4 +1,4 @@
-<form id="manual-price" class="panel asset-context price-editor" action="/assets/{{ id }}/prices" method="post" hx-disabled-elt="find button">
+<form id="manual-price" class="panel editor-context price-editor" action="/assets/{{ id }}/prices" method="post" hx-disabled-elt="find button">
   <h2>Manual price</h2>
   <p class="description">Record a price per unit for {{ form.symbol }}.</p>
   {% if !price_error.is_empty() %}<div class="notice error" role="alert">{{ price_error }}</div>{% endif %}

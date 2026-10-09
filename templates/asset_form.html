@@ -3,7 +3,7 @@
 <a class="breadcrumb" href="/assets">← All assets</a>
 <div class="page-heading"><div><p class="eyebrow">Instrument settings</p><h1>{{ common.title }}</h1><p class="description">{% if let Some(id) = id %}{{ form.symbol }} · Asset #{{ id }}{% else %}Configure an asset before recording its first transaction.{% endif %}</p></div>{% if let Some(id) = id %}<a class="button" href="/transactions/new?asset={{ id }}">+ Add transaction</a>{% endif %}</div>
 {% if !notice.is_empty() %}<div class="notice success" role="status">{{ notice }}</div>{% endif %}
-<div class="assets-layout">
+<div class="editor-layout">
   <form class="editor panel" action="{% if let Some(id) = id %}/assets/{{ id }}{% else %}/assets/new{% endif %}" method="post" data-asset-form hx-disabled-elt="find button[type='submit']">
     {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
     <fieldset><legend><span class="section-number">01</span> Identity</legend><div class="form-grid">
@@ -22,11 +22,11 @@
   </form>
   <aside>
     {% if let Some(id) = id %}
-    <section class="panel asset-context"><h2>Related records</h2><a class="context-link" href="/transactions?asset={{ id }}&scope=any">{{ transactions }} transactions <span aria-hidden="true">→</span></a>{% if let Some(url) = chart_url %}<a class="context-link" href="{{ url }}" target="_blank" rel="noopener noreferrer" hx-boost="false">TradingView chart <span aria-hidden="true">↗</span></a>{% endif %}</section>
-    {% if manual_pricing %}{% include "manual_price_form.html" %}{% else %}<section class="panel asset-context"><h2>Yahoo pricing</h2>{% if !price_error.is_empty() %}<div class="notice error" role="alert">{{ price_error }}</div>{% endif %}<p class="description">To record manual prices, clear the Yahoo symbol and save the asset first.</p></section>{% endif %}
-    <section class="panel asset-context recorded-prices"><h2>Latest recorded prices</h2>{% for price in quotes %}<div class="quote-line {% if price.missing %}warning-text{% endif %}">{{ price.value }} <span class="muted">{{ price.currency }}</span><span class="cell-subtitle">{{ price.source }}</span><span class="cell-subtitle">{{ price.timestamp }}</span></div>{% endfor %}</section>
+    <section class="panel editor-context"><h2>Related records</h2><a class="context-link" href="/transactions?asset={{ id }}&scope=any">{{ transactions }} transactions <span aria-hidden="true">→</span></a>{% if let Some(url) = chart_url %}<a class="context-link" href="{{ url }}" target="_blank" rel="noopener noreferrer" hx-boost="false">TradingView chart <span aria-hidden="true">↗</span></a>{% endif %}</section>
+    {% if manual_pricing %}{% include "manual_price_form.html" %}{% else %}<section class="panel editor-context"><h2>Yahoo pricing</h2>{% if !price_error.is_empty() %}<div class="notice error" role="alert">{{ price_error }}</div>{% endif %}<p class="description">To record manual prices, clear the Yahoo symbol and save the asset first.</p></section>{% endif %}
+    <section class="panel editor-context recorded-prices"><h2>Latest recorded prices</h2>{% for price in quotes %}<div class="quote-line {% if price.missing %}warning-text{% endif %}">{{ price.value }} <span class="muted">{{ price.currency }}</span><span class="cell-subtitle">{{ price.source }}</span><span class="cell-subtitle">{{ price.timestamp }}</span></div>{% endfor %}</section>
     <p class="aside-note">Edits keep this asset's ID. Transactions, ledger quantities, prices, and stock splits remain linked to it.</p>
-    {% else %}<section class="panel asset-context"><h2>Asset setup</h2><p class="description">Your local symbol identifies the asset in this ledger. Provider symbols identify the instrument on Yahoo and TradingView.</p><p class="description">After saving, add a transaction to record a holding, or record a manual price here if no Yahoo symbol is configured.</p></section>{% endif %}
+    {% else %}<section class="panel editor-context"><h2>Asset setup</h2><p class="description">Your local symbol identifies the asset in this ledger. Provider symbols identify the instrument on Yahoo and TradingView.</p><p class="description">After saving, add a transaction to record a holding, or record a manual price here if no Yahoo symbol is configured.</p></section>{% endif %}
   </aside>
 </div>
 {% endblock %}

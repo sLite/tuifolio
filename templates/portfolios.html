@@ -4,9 +4,9 @@
 <section class="panel">
   <div class="panel-heading"><h2>Your portfolios <span class="count">{{ portfolios.len() }}</span></h2></div>
   <div class="table-scroll" tabindex="0" role="region" aria-label="Portfolios table"><table>
-    <thead><tr><th scope="col">Portfolio</th><th scope="col" class="number">Assets</th><th scope="col" class="number">Liabilities</th><th scope="col" class="number">Net worth</th><th scope="col">Valuation</th></tr></thead>
-    <tbody>{% for portfolio in portfolios %}<tr><td><a class="asset-link" href="/portfolios/{{ portfolio.id }}">{{ portfolio.name }} <span class="muted">→</span></a></td><td class="number">{{ portfolio.assets.text }}</td><td class="number">{{ portfolio.liabilities.text }}</td><td class="number emphatic">{{ portfolio.net.text }}</td><td>{% if portfolio.missing > 0 %}<span class="badge warning-text">{{ portfolio.missing }} missing prices</span>{% else %}<span class="muted">Complete</span>{% endif %}</td></tr>{% endfor %}
-    {% if portfolios.is_empty() %}<tr><td colspan="5" class="empty-table">No portfolios yet. <a href="/portfolios/new">Create a portfolio</a> to get started.</td></tr>{% endif %}</tbody>
+    <thead><tr><th scope="col">Portfolio</th><th scope="col" class="number">Net worth</th><th scope="col" class="number">Assets</th><th scope="col" class="number">Liabilities</th><th scope="col" class="number">Unrealized PnL</th><th scope="col">Valuation</th></tr></thead>
+    <tbody>{% for portfolio in portfolios %}<tr><td><a class="asset-link" href="/portfolios/{{ portfolio.id }}">{{ portfolio.name }} <span class="muted">→</span></a></td><td class="number emphatic">{{ portfolio.net.text }}</td><td class="number">{{ portfolio.assets.text }}</td><td class="number">{{ portfolio.liabilities.text }}</td><td class="number {{ portfolio.pnl.tone }}">{{ portfolio.pnl.text }}</td><td>{% if portfolio.missing > 0 %}<span class="badge warning-text">{{ portfolio.missing }} missing prices</span>{% else %}<span class="muted">Complete</span>{% endif %}</td></tr>{% endfor %}
+    {% if portfolios.is_empty() %}<tr><td colspan="6" class="empty-table">No portfolios yet. <a href="/portfolios/new">Create a portfolio</a> to get started.</td></tr>{% endif %}</tbody>
   </table></div>
 </section>
 {% endblock %}

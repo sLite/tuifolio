@@ -77,7 +77,6 @@ main { max-width: 1824px; margin: auto; padding: 50px 48px 77px; min-height: cal
 .text-link { color: var(--muted); font-size: 14px; }
 
 .metrics { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1.2fr; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--panel); margin-bottom: 34px; }
-.metrics.three { grid-template-columns: 1.35fr 1fr 1fr; }
 .metric { padding: 31px 29px; border-left: 1px solid var(--border); min-width: 0; }
 .metric:first-child { border-left: 0; }
 .metric-label { color: var(--muted); font-size: 14px; display: block; }
@@ -139,13 +138,8 @@ td.number { font-family: var(--numbers); font-size: 13px; line-height: 1.9; }
 pre { padding: 19px; background: var(--background); border: 1px solid var(--border); border-radius: 5px; text-align: left; overflow-x: auto; }
 .pagination { display: flex; align-items: center; justify-content: space-between; gap: 19px; padding: 19px 29px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
 .pagination > div { display: flex; gap: 17px; align-items: center; }
-.transaction-details { font-size: 13px; min-width: 90px; }
-.transaction-details summary { color: var(--muted); }
-.transaction-details[open] { min-width: 216px; }
-dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 14px 0 0; font-size: 13px; }
-dt { color: var(--muted); }
-dd { margin: 0; white-space: normal; overflow-wrap: anywhere; max-width: 360px; }
-dd.notes { white-space: pre-wrap; }
+.transaction-note { width: 30%; min-width: 200px; white-space: normal; }
+.note-text { max-width: 420px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 
 .editor { max-width: 1008px; padding: 36px; }
 .portfolio-editor { max-width: 696px; }
@@ -157,18 +151,24 @@ legend { width: 100%; font-size: 19px; font-weight: 500; padding: 0 0 18px; marg
 .form-grid .full-width { grid-column: 1 / -1; }
 .optional { font-size: 13px; font-weight: 400; margin-left: 6px; }
 .field-help { font-size: 14px; line-height: 1.7; margin-top: 17px; }
+.transaction-notes textarea { width: 100%; min-height: 112px; resize: vertical; font-size: 17px; font-weight: 400; line-height: 1.5; }
 .advanced-fields { border-top: 1px solid var(--border); padding-top: 24px; }
 .advanced-fields > summary { font-size: 16px; }
 .advanced-fields .form-grid { margin-top: 29px; }
 .form-actions { display: flex; gap: 14px; justify-content: flex-end; padding-top: 29px; margin-top: 29px; border-top: 1px solid var(--border); }
-.assets-layout { display: grid; grid-template-columns: minmax(0, 1fr) 384px; gap: 29px; align-items: start; }
-.assets-layout .editor { max-width: none; }
+.editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 384px; gap: 29px; align-items: start; }
+.editor-layout .editor { max-width: none; }
 .asset-kind { margin-top: 8px; color: var(--muted); }
 .provider-symbol { color: var(--text); }
 .quote-line + .quote-line { margin-top: 14px; }
-.asset-context { padding: 29px; }
-.asset-context + .asset-context { margin-top: 24px; }
-.asset-context .description { font-size: 14px; line-height: 1.8; }
+.editor-context { padding: 29px; }
+.editor-context + .editor-context { margin-top: 24px; }
+.editor-context .description { font-size: 14px; line-height: 1.8; }
+.transaction-context dl { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 22px 0 0; }
+.transaction-context dt { color: var(--muted); font-size: 13px; }
+.transaction-context dd { margin: 0 0 16px; font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.transaction-context dd:last-child { margin-bottom: 0; }
+.transaction-sidebar .delete-section .button { width: 100%; }
 .context-link { display: flex; justify-content: space-between; padding-top: 19px; font-size: 14px; color: var(--muted); }
 .recorded-prices .quote-line { font: 14px/1.8 var(--numbers); margin-top: 22px; }
 input[readonly] { color: var(--muted); border-style: dashed; }
@@ -195,7 +195,7 @@ input[readonly] { color: var(--muted); border-style: dashed; }
   .site-footer { padding-left: 29px; padding-right: 29px; }
   .metric { padding-left: 22px; padding-right: 22px; }
   .metrics { grid-template-columns: 1.25fr 1fr 1fr 1.15fr; }
-  .assets-layout { grid-template-columns: minmax(0, 1fr) 336px; gap: 22px; }
+  .editor-layout { grid-template-columns: minmax(0, 1fr) 336px; gap: 22px; }
 }
 @media (max-width: 1080px) {
   .header-inner { flex-wrap: wrap; gap: 0; padding-top: 19px; }
@@ -204,10 +204,7 @@ input[readonly] { color: var(--muted); border-style: dashed; }
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric:nth-child(3) { border-left: 0; }
   .metric:nth-child(n+3) { border-top: 1px solid var(--border); }
-  .metrics.three { grid-template-columns: 1fr 1fr 1fr; }
-  .metrics.three .metric { border-top: 0; }
-  .metrics.three .metric:nth-child(3) { border-left: 1px solid var(--border); }
-  .assets-layout { grid-template-columns: 1fr; }
+  .editor-layout { grid-template-columns: 1fr; }
   .price-editor { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 19px; align-items: end; }
   .price-editor > h2, .price-editor > .description, .price-editor > .notice, .price-editor > .field-help { grid-column: 1 / -1; margin: 0; }
   .price-editor > label, .price-editor > .field, .price-editor > .button { margin: 0; }
@@ -227,8 +224,6 @@ input[readonly] { color: var(--muted); border-style: dashed; }
   .metric { padding: 24px 17px; }
   .net-worth { padding-top: 22px; }
   .metric strong { font-size: 25px; }
-  .metrics.three { grid-template-columns: 1fr; }
-  .metrics.three .metric:nth-child(n+2) { border-left: 0; border-top: 1px solid var(--border); }
   .notice { align-items: flex-start; flex-direction: column; gap: 12px; }
   .panel-heading, .filters { padding: 22px; }
   .filters > label, .filters > .field, .filters .search-field { flex: 1; max-width: none; min-width: 100%; }

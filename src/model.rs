@@ -28,12 +28,42 @@ impl AssetKind {
 pub enum TransactionKind {
     Buy,
     Sell,
+    Gift,
     Deposit,
     Withdraw,
     AssetIncrease,
     AssetDecrease,
     LiabilityIncrease,
     LiabilityDecrease,
+}
+
+impl TransactionKind {
+    pub fn has_implicit_zero_cost_basis(self) -> bool {
+        self == Self::Gift
+    }
+
+    pub fn supports_quote(self) -> bool {
+        matches!(
+            self,
+            Self::Buy | Self::Sell | Self::AssetIncrease | Self::AssetDecrease
+        )
+    }
+
+    pub fn requires_quote(self) -> bool {
+        matches!(self, Self::Buy | Self::Sell)
+    }
+
+    pub fn quote_cash_delta(self, amount: Decimal) -> Decimal {
+        match self {
+            Self::Buy | Self::AssetIncrease => -amount,
+            Self::Sell | Self::AssetDecrease => amount,
+            Self::Gift
+            | Self::Deposit
+            | Self::Withdraw
+            | Self::LiabilityIncrease
+            | Self::LiabilityDecrease => Decimal::ZERO,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

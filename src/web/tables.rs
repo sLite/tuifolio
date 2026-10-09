@@ -171,6 +171,7 @@ pub(super) struct PortfolioView {
     pub assets: Amount,
     pub liabilities: Amount,
     pub net: Amount,
+    pub pnl: Amount,
     pub missing: usize,
 }
 
@@ -182,6 +183,7 @@ impl PortfolioView {
             assets: Amount::new(Some(portfolio.assets), precision),
             liabilities: Amount::new(Some(portfolio.liabilities), precision),
             net: Amount::new(Some(portfolio.net_value), precision),
+            pnl: Amount::new(Some(portfolio.unrealized_pnl), precision),
             missing: portfolio.unresolved,
         }
     }
@@ -200,7 +202,6 @@ pub(super) struct TransactionView {
     pub exchange: String,
     pub broker: String,
     pub notes: String,
-    pub source: String,
 }
 
 impl TransactionView {
@@ -216,13 +217,12 @@ impl TransactionView {
                 Some(transaction.base_asset_id),
                 Some(transaction.base_amount),
             ),
-            quote: asset_amount(data, transaction.quote_asset_id, transaction.quote_amount),
+            quote: transaction_quote(transaction, data),
             cash_effect: cash_effect(transaction),
             fee: asset_amount(data, transaction.fee_asset_id, transaction.fee_amount),
             exchange: transaction.exchange.clone().unwrap_or_default(),
             broker: transaction.broker.clone().unwrap_or_default(),
             notes: transaction.notes.clone().unwrap_or_default(),
-            source: transaction.source.clone(),
         }
     }
 
@@ -252,12 +252,22 @@ fn portfolio_name(data: &StoreData, id: Id) -> String {
 }
 
 fn cash_effect(transaction: &Transaction) -> &'static str {
-    if transaction.quote_amount.is_none() {
+    if transaction.kind.has_implicit_zero_cost_basis() {
+        "Zero cost basis"
+    } else if !transaction.kind.supports_quote() || transaction.quote_amount.is_none() {
         ""
     } else if transaction.quote_ledger_effect == LedgerEffect::Ignore {
         "Cost basis only"
     } else {
         "Cash posted"
+    }
+}
+
+fn transaction_quote(transaction: &Transaction, data: &StoreData) -> String {
+    if transaction.kind.has_implicit_zero_cost_basis() {
+        "0".into()
+    } else {
+        asset_amount(data, transaction.quote_asset_id, transaction.quote_amount)
     }
 }
 
@@ -377,6 +387,7 @@ pub(super) fn transaction_kind(kind: crate::model::TransactionKind) -> &'static 
     match kind {
         Buy => "Buy",
         Sell => "Sell",
+        Gift => "Gift",
         Deposit => "Deposit",
         Withdraw => "Withdraw",
         AssetIncrease => "Asset increase",

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
-use crate::model::{Asset, AssetKind, Id, Price, StoreData, TransactionKind};
+use crate::model::{Asset, AssetKind, Id, Portfolio, Price, StoreData, Transaction};
 
 #[derive(Debug, Clone)]
 pub struct HoldingRow {
@@ -27,6 +27,7 @@ pub struct PortfolioRow {
     pub assets: Decimal,
     pub liabilities: Decimal,
     pub net_value: Decimal,
+    pub unrealized_pnl: Decimal,
     pub unresolved: usize,
 }
 
@@ -79,7 +80,7 @@ pub fn build_report(data: &StoreData) -> Report {
     let total_assets = portfolios.iter().map(|p| p.assets).sum();
     let total_liabilities = portfolios.iter().map(|p| p.liabilities).sum();
     let net_value = total_assets - total_liabilities;
-    let total_unrealized_pnl = holdings.iter().filter_map(|h| h.unrealized_pnl).sum();
+    let total_unrealized_pnl = portfolios.iter().map(|p| p.unrealized_pnl).sum();
     let negative_balances = holdings
         .iter()
         .filter(|h| h.kind != AssetKind::Liability && h.quantity < Decimal::ZERO)
@@ -245,6 +246,11 @@ fn crypto_asset<'a>(symbol: &str, assets: &'a HashMap<Id, &Asset>) -> Option<&'a
         .find(|asset| asset.symbol == symbol && asset.kind == AssetKind::Crypto)
 }
 
+enum CostBasisChange {
+    Unrecorded,
+    Recorded(Decimal),
+}
+
 fn net_invested(
     data: &StoreData,
     portfolio_id: Id,
@@ -258,61 +264,88 @@ fn net_invested(
         if transaction.portfolio_id != portfolio_id || transaction.base_asset_id != asset_id {
             continue;
         }
-        let Some(quote_asset_id) = transaction.quote_asset_id else {
-            continue;
-        };
-        let quote_asset = assets.get(&quote_asset_id)?;
-        let historical_prices = prices_at(data, transaction.timestamp);
-        let latest_prices = latest_prices(data);
-        let rate = conversion_rate(&quote_asset.symbol, base, &historical_prices, assets)
-            .or_else(|| conversion_rate(&quote_asset.symbol, base, &latest_prices, assets))?;
-        let Some(quote_amount) = transaction.quote_amount else {
-            continue;
-        };
-        match transaction.kind {
-            TransactionKind::Buy => invested += quote_amount * rate,
-            TransactionKind::Sell => invested -= quote_amount * rate,
-            TransactionKind::Deposit
-            | TransactionKind::Withdraw
-            | TransactionKind::AssetIncrease
-            | TransactionKind::AssetDecrease
-            | TransactionKind::LiabilityIncrease
-            | TransactionKind::LiabilityDecrease => {}
+        if let CostBasisChange::Recorded(amount) =
+            cost_basis_change(data, transaction, base, assets)?
+        {
+            invested += amount;
+            seen = true;
         }
-        seen = true;
     }
     seen.then_some(invested)
+}
+
+fn cost_basis_change(
+    data: &StoreData,
+    transaction: &Transaction,
+    base: &str,
+    assets: &HashMap<Id, &Asset>,
+) -> Option<CostBasisChange> {
+    if transaction.kind.has_implicit_zero_cost_basis() {
+        return Some(CostBasisChange::Recorded(Decimal::ZERO));
+    }
+    if !transaction.kind.supports_quote()
+        || transaction.quote_asset_id.is_none()
+        || transaction.quote_amount.is_none()
+    {
+        return Some(CostBasisChange::Unrecorded);
+    }
+    let value = transaction_quote_value(data, transaction, base, assets)?;
+    Some(CostBasisChange::Recorded(
+        -transaction.kind.quote_cash_delta(value),
+    ))
+}
+
+fn transaction_quote_value(
+    data: &StoreData,
+    transaction: &Transaction,
+    base: &str,
+    assets: &HashMap<Id, &Asset>,
+) -> Option<Decimal> {
+    let amount = transaction.quote_amount?;
+    let asset = assets.get(&transaction.quote_asset_id?)?;
+    if amount.is_zero() {
+        return Some(Decimal::ZERO);
+    }
+    let historical_prices = prices_at(data, transaction.timestamp);
+    let latest_prices = latest_prices(data);
+    let rate = conversion_rate(&asset.symbol, base, &historical_prices, assets)
+        .or_else(|| conversion_rate(&asset.symbol, base, &latest_prices, assets))?;
+    Some(amount * rate)
 }
 
 fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow> {
     data.portfolios
         .iter()
-        .map(|portfolio| {
-            let rows = holdings
-                .iter()
-                .filter(|holding| holding.portfolio_id == portfolio.id);
-            let assets = rows
-                .clone()
-                .filter(|holding| holding.kind != AssetKind::Liability)
-                .filter_map(|holding| holding.value)
-                .sum();
-            let liabilities = rows
-                .clone()
-                .filter(|holding| holding.kind == AssetKind::Liability)
-                .filter_map(|holding| holding.value)
-                .sum();
-            let net_value = assets - liabilities;
-            let unresolved = rows.filter(|h| h.stale_price).count();
-            PortfolioRow {
-                id: portfolio.id,
-                name: portfolio.name.clone(),
-                assets,
-                liabilities,
-                net_value,
-                unresolved,
-            }
-        })
+        .map(|portfolio| portfolio_row(portfolio, holdings))
         .collect()
+}
+
+fn portfolio_row(portfolio: &Portfolio, holdings: &[HoldingRow]) -> PortfolioRow {
+    let rows = holdings
+        .iter()
+        .filter(|holding| holding.portfolio_id == portfolio.id);
+    let assets = rows
+        .clone()
+        .filter(|holding| holding.kind != AssetKind::Liability)
+        .filter_map(|holding| holding.value)
+        .sum();
+    let liabilities = rows
+        .clone()
+        .filter(|holding| holding.kind == AssetKind::Liability)
+        .filter_map(|holding| holding.value)
+        .sum();
+    PortfolioRow {
+        id: portfolio.id,
+        name: portfolio.name.clone(),
+        assets,
+        liabilities,
+        net_value: assets - liabilities,
+        unrealized_pnl: rows
+            .clone()
+            .filter_map(|holding| holding.unrealized_pnl)
+            .sum(),
+        unresolved: rows.filter(|holding| holding.stale_price).count(),
+    }
 }
 
 fn portfolio_name(data: &StoreData, id: Id) -> String {
