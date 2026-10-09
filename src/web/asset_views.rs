@@ -5,7 +5,7 @@ use super::{
     forms::PriceForm,
     query::PageQuery,
     tables::{PriceView, asset_kind, chart_url, prices},
-    views::{ASSET_KINDS, Choice, Common, asset_choices, enum_choices},
+    views::{ASSET_KINDS, Choice, Common, enum_choices},
 };
 use crate::{
     assets::currency_in_use,
@@ -87,8 +87,6 @@ fn asset_rows(data: &StoreData, search: &str) -> Vec<AssetRow> {
 pub(super) struct AssetsPage {
     pub common: Common,
     pub rows: Vec<AssetRow>,
-    pub asset_choices: Vec<Choice>,
-    pub form: PriceForm,
     pub search: String,
     pub error: String,
     pub notice: String,
@@ -96,18 +94,10 @@ pub(super) struct AssetsPage {
 }
 
 impl AssetsPage {
-    pub fn new(
-        data: &StoreData,
-        query: &PageQuery,
-        form: PriceForm,
-        feedback: Feedback,
-        refreshing: bool,
-    ) -> Self {
+    pub fn new(data: &StoreData, query: &PageQuery, feedback: Feedback, refreshing: bool) -> Self {
         Self {
             common: Common::new(data, "Assets", "assets", "/assets".into()),
             rows: asset_rows(data, &query.search),
-            asset_choices: asset_choices(data, form.asset_id.parse().ok()),
-            form,
             search: query.search.clone(),
             error: feedback.error,
             notice: feedback.notice,
@@ -146,6 +136,10 @@ pub(super) struct AssetEditorPage {
     pub form: AssetForm,
     pub kinds: Vec<Choice>,
     pub currency_locked: bool,
+    pub intrinsic_valuation: bool,
+    pub manual_pricing: bool,
+    pub price_form: PriceForm,
+    pub price_error: String,
     pub quotes: Vec<PriceView>,
     pub transactions: usize,
     pub chart_url: Option<String>,
@@ -165,8 +159,15 @@ impl AssetEditorPage {
             common: editor_common(data, id),
             id,
             kinds: enum_choices(ASSET_KINDS, &form.kind),
+            intrinsic_valuation: form.supports_intrinsic_valuation(),
             form,
             currency_locked: asset.is_some_and(|asset| currency_in_use(data, asset)),
+            manual_pricing: asset.is_some_and(Asset::allows_manual_pricing),
+            price_form: PriceForm {
+                currency: data.config.selected_base_currency.clone(),
+                ..PriceForm::default()
+            },
+            price_error: String::new(),
             quotes: prices(data)
                 .into_iter()
                 .filter(|price| Some(price.asset_id) == id)
@@ -176,6 +177,12 @@ impl AssetEditorPage {
             error: feedback.error,
             notice: feedback.notice,
         }
+    }
+
+    pub fn with_price_error(mut self, form: PriceForm, error: String) -> Self {
+        self.price_form = form;
+        self.price_error = error;
+        self
     }
 }
 

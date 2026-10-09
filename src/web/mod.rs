@@ -6,6 +6,7 @@ mod forms;
 mod handlers;
 mod navigation;
 mod portfolio_handlers;
+mod price_refresh;
 mod query;
 mod state;
 mod tables;
@@ -29,29 +30,59 @@ use state::AppState;
 use crate::store::Store;
 use error::WebError;
 
-pub fn run(store: Store, port: u16) -> anyhow::Result<()> {
+pub const DEFAULT_PRICE_REFRESH_SECONDS: u64 = 5 * 60;
+
+pub struct WebOptions {
+    pub port: u16,
+    pub price_refresh_interval: std::time::Duration,
+}
+
+impl Default for WebOptions {
+    fn default() -> Self {
+        Self {
+            port: 3000,
+            price_refresh_interval: std::time::Duration::from_secs(DEFAULT_PRICE_REFRESH_SECONDS),
+        }
+    }
+}
+
+pub fn run(store: Store, options: WebOptions) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        std::time::Instant::now()
+            .checked_add(options.price_refresh_interval)
+            .is_some(),
+        "price refresh interval is too large"
+    );
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(serve(store, port))
+        .block_on(serve(store, options))
 }
 
-async fn serve(store: Store, port: u16) -> anyhow::Result<()> {
-    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+async fn serve(store: Store, options: WebOptions) -> anyhow::Result<()> {
+    let listener =
+        tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, options.port)).await?;
     let port = listener.local_addr()?.port();
     tracing::info!(port, store = %store.path().display(), "starting local web interface");
     println!("Tuifolio: http://127.0.0.1:{port}\nPress Ctrl+C to stop.");
-    axum::serve(listener, router(AppState::new(store, port)))
-        .with_graceful_shutdown(shutdown())
-        .await?;
+    let state = AppState::new(store, port);
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let refresh = price_refresh::start(state.clone(), options.price_refresh_interval, stopped);
+    let result = axum::serve(listener, router(state))
+        .with_graceful_shutdown(shutdown(stop.clone()))
+        .await;
+    stop.send_replace(true);
+    refresh.await?;
+    result?;
     Ok(())
 }
 
-async fn shutdown() {
+async fn shutdown(stop: tokio::sync::watch::Sender<bool>) {
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::error!(%error, "could not listen for shutdown signal");
     }
     tracing::info!("stopping web interface");
+    stop.send_replace(true);
 }
 
 fn router(state: AppState) -> Router {
@@ -104,7 +135,7 @@ fn asset_routes() -> Router<AppState> {
             "/assets/{id}",
             get(asset_handlers::asset).post(asset_handlers::update_asset),
         )
-        .route("/assets/prices", post(asset_handlers::create_price))
+        .route("/assets/{id}/prices", post(asset_handlers::create_price))
         .route("/assets/sync", post(asset_handlers::sync_prices))
 }
 

@@ -6,7 +6,7 @@ use std::sync::{
 use super::error::WebError;
 use crate::{
     model::StoreData,
-    price_sync::{SyncSummary, fetch_prices, merge_price_batch},
+    price_sync::{PriceBatch, SyncSummary, fetch_prices, merge_price_batch},
     store::Store,
 };
 
@@ -18,6 +18,20 @@ pub(super) struct AppState {
 }
 
 struct RefreshGuard(Arc<AtomicBool>);
+
+pub(super) enum PriceRefresh {
+    Updated(SyncSummary),
+    AlreadyRunning,
+}
+
+impl RefreshGuard {
+    fn acquire(refreshing: Arc<AtomicBool>) -> Option<Self> {
+        refreshing
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        Some(Self(refreshing))
+    }
+}
 
 impl Drop for RefreshGuard {
     fn drop(&mut self) {
@@ -63,18 +77,32 @@ impl AppState {
         self.refreshing.load(Ordering::Acquire)
     }
 
-    pub async fn refresh_prices(&self) -> Result<SyncSummary, WebError> {
-        let state = self.clone();
-        blocking(move || state.fetch_and_commit()).await
+    pub async fn refresh_prices(&self) -> Result<PriceRefresh, WebError> {
+        self.refresh_with(fetch_prices).await
     }
 
-    fn fetch_and_commit(&self) -> Result<SyncSummary, WebError> {
-        self.refreshing
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| WebError::invalid("A price refresh is already running."))?;
-        let _guard = RefreshGuard(self.refreshing.clone());
+    async fn refresh_with(
+        &self,
+        fetch: impl FnOnce(&StoreData) -> anyhow::Result<PriceBatch> + Send + 'static,
+    ) -> Result<PriceRefresh, WebError> {
+        let Some(guard) = RefreshGuard::acquire(self.refreshing.clone()) else {
+            return Ok(PriceRefresh::AlreadyRunning);
+        };
+        let state = self.clone();
+        blocking(move || {
+            let _guard = guard;
+            state.fetch_and_commit(fetch)
+        })
+        .await
+        .map(PriceRefresh::Updated)
+    }
+
+    fn fetch_and_commit(
+        &self,
+        fetch: impl FnOnce(&StoreData) -> anyhow::Result<PriceBatch>,
+    ) -> Result<SyncSummary, WebError> {
         let data = self.store.lock().map_err(lock_error)?.data.clone();
-        let batch = fetch_prices(&data).map_err(provider_error)?;
+        let batch = fetch(&data).map_err(provider_error)?;
         self.commit(move |store| Ok(merge_price_batch(&mut store.data, &data, batch)))
     }
 }
@@ -98,3 +126,6 @@ async fn blocking<T: Send + 'static>(
         .await
         .map_err(anyhow::Error::from)?
 }
+
+#[cfg(test)]
+mod tests;

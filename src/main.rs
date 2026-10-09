@@ -23,6 +23,8 @@ enum Command {
     Web {
         #[arg(long, default_value_t = 3000)]
         port: u16,
+        #[arg(long, default_value_t = web::DEFAULT_PRICE_REFRESH_SECONDS, help = "Seconds between automatic price refreshes; 0 disables them")]
+        price_refresh_seconds: u64,
     },
     Summary,
     Holding {
@@ -45,9 +47,28 @@ fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
     let cli = Cli::parse();
-    let mut store = Store::open(cli.store)?;
-    match cli.command.unwrap_or(Command::Web { port: 3000 }) {
-        Command::Web { port } => return web::run(store, port),
+    let store = Store::open(cli.store)?;
+    let command = cli.command.unwrap_or(Command::Web {
+        port: 3000,
+        price_refresh_seconds: web::DEFAULT_PRICE_REFRESH_SECONDS,
+    });
+    execute_command(store, command)
+}
+
+fn execute_command(mut store: Store, command: Command) -> anyhow::Result<()> {
+    match command {
+        Command::Web {
+            port,
+            price_refresh_seconds,
+        } => {
+            return web::run(
+                store,
+                web::WebOptions {
+                    port,
+                    price_refresh_interval: std::time::Duration::from_secs(price_refresh_seconds),
+                },
+            );
+        }
         Command::Summary => summary_command(&store),
         Command::Holding { symbol } => holding_command(&store, &symbol),
         Command::MissingPrices => missing_prices_command(&store),

@@ -4,7 +4,7 @@ use tuifolio::{
     accounting::build_report,
     assets::{AssetInput, save_asset},
     model::{Asset, AssetKind, AssetMetadataSource, Id, LedgerEffect, Price, TransactionKind},
-    price_sync::{PriceBatch, SyncSummary, add_manual_price, fetch_prices, merge_price_batch},
+    price_sync::{PriceBatch, SyncSummary, fetch_prices, merge_price_batch},
     store::Store,
     transactions::{ManualTransactionInput, add_manual_transaction},
 };
@@ -36,7 +36,7 @@ impl Fixture {
         support::create_portfolio(&mut store, "Main");
         let input = stock_transaction(&store);
         let result = add_manual_transaction(&mut store, input).unwrap();
-        add_manual_price(&mut store, "AAPL", dec!(100), "EUR").unwrap();
+        record_yahoo_price(&mut store, result.asset_id);
         Self {
             directory,
             store,
@@ -74,6 +74,16 @@ impl Fixture {
             store: Store::open(Some(path)).unwrap(),
         }
     }
+}
+
+fn record_yahoo_price(store: &mut Store, asset_id: Id) {
+    store.data.prices.push(Price {
+        asset_id,
+        timestamp: Utc::now(),
+        price: dec!(100),
+        currency: "EUR".into(),
+        source: "yahoo".into(),
+    });
 }
 
 fn stock_transaction(store: &Store) -> ManualTransactionInput {

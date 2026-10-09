@@ -12,7 +12,7 @@ use tower::ServiceExt;
 use super::super::{forms::TransactionForm, router, state::AppState};
 use crate::{
     assets::{AssetInput, save_asset},
-    model::{AssetKind, Id, StoreData},
+    model::{AssetKind, Id, Price, StoreData},
     portfolios::{PortfolioInput, create_portfolio},
     price_sync::add_manual_price,
     store::Store,
@@ -152,6 +152,7 @@ pub(super) fn duplicate_asset(store: &mut Store, name: &str) -> Id {
     asset.id = store.data.allocate_id();
     asset.name = name.into();
     asset.kind = AssetKind::Custom;
+    asset.yahoo_symbol = None;
     let id = asset.id;
     store.data.assets.push(asset);
     id
@@ -173,7 +174,17 @@ fn seed(store: &mut Store) {
     deposit.quote_asset_id.clear();
     deposit.quote_amount.clear();
     add_manual_transaction(store, deposit.input().unwrap()).unwrap();
-    add_manual_price(store, "BTC", dec!(30000), "EUR").unwrap();
+    seed_prices(store);
+}
+
+fn seed_prices(store: &mut Store) {
+    store.data.prices.push(Price {
+        asset_id: asset_id(&store.data, "BTC"),
+        timestamp: chrono::Utc::now(),
+        price: dec!(30000),
+        currency: "EUR".into(),
+        source: "yahoo".into(),
+    });
     add_manual_price(store, "USD", dec!(0.9), "EUR").unwrap();
 }
 

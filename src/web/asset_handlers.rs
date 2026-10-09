@@ -12,7 +12,7 @@ use super::{
     forms::PriceForm,
     navigation::navigate,
     query::PageQuery,
-    state::AppState,
+    state::{AppState, PriceRefresh},
 };
 use crate::{
     assets::save_asset,
@@ -24,31 +24,19 @@ pub(super) async fn assets(
     State(state): State<AppState>,
     Query(query): Query<PageQuery>,
 ) -> Result<Html<String>, WebError> {
-    let notice = if query.notice == "price-added" {
-        "Manual price saved.".into()
-    } else {
-        String::new()
-    };
-    asset_list_page(&state, &query, None, Feedback::notice(notice)).await
+    asset_list_page(&state, &query, Feedback::default()).await
 }
 
 async fn asset_list_page(
     state: &AppState,
     query: &PageQuery,
-    form: Option<PriceForm>,
     feedback: Feedback,
 ) -> Result<Html<String>, WebError> {
     let data = state.snapshot().await?;
     query.validate(&data)?;
-    let form = form.unwrap_or_else(|| PriceForm {
-        asset_id: query.asset.map(|id| id.to_string()).unwrap_or_default(),
-        currency: data.config.selected_base_currency.clone(),
-        ..PriceForm::default()
-    });
     render(AssetsPage::new(
         &data,
         query,
-        form,
         feedback,
         state.is_refreshing(),
     ))
@@ -63,10 +51,10 @@ pub(super) async fn asset(
     Path(id): Path<Id>,
     Query(query): Query<PageQuery>,
 ) -> Result<Html<String>, WebError> {
-    let notice = if query.notice == "saved" {
-        "Asset saved.".into()
-    } else {
-        String::new()
+    let notice = match query.notice.as_str() {
+        "saved" => "Asset saved.",
+        "price-added" => "Manual price saved.",
+        _ => "",
     };
     editor_page(&state, Some(id), None, Feedback::notice(notice)).await
 }
@@ -140,66 +128,81 @@ async fn save_asset_form(
 
 pub(super) async fn create_price(
     State(state): State<AppState>,
+    Path(id): Path<Id>,
     headers: HeaderMap,
     Form(form): Form<PriceForm>,
 ) -> Result<Response, WebError> {
-    match save_price(&state, &form).await {
+    find_asset(&state.snapshot().await?, id)?;
+    match save_price(&state, id, &form).await {
         Ok(()) => {
-            tracing::info!(asset_id = form.asset_id, "manual price saved");
+            tracing::info!(asset_id = id, "manual price saved");
             Ok(navigate(
-                &format!("/assets?notice=price-added&asset={}", form.asset_id),
+                &format!("/assets/{id}?notice=price-added"),
                 &headers,
             ))
         }
         Err(error) => Ok((
             error.status,
-            asset_list_page(
-                &state,
-                &PageQuery::default(),
-                Some(form),
-                Feedback::error(error.message),
-            )
-            .await?,
+            price_error_page(&state, id, form, error.message).await?,
         )
             .into_response()),
     }
 }
 
-async fn save_price(state: &AppState, form: &PriceForm) -> Result<(), WebError> {
+async fn price_error_page(
+    state: &AppState,
+    id: Id,
+    form: PriceForm,
+    error: String,
+) -> Result<Html<String>, WebError> {
+    let data = state.snapshot().await?;
+    let asset = find_asset(&data, id)?;
+    render(
+        AssetEditorPage::new(
+            &data,
+            Some(asset),
+            AssetForm::from_asset(asset),
+            Feedback::default(),
+        )
+        .with_price_error(form, error),
+    )
+}
+
+async fn save_price(state: &AppState, id: Id, form: &PriceForm) -> Result<(), WebError> {
     let input = form.input().map_err(WebError::invalid)?;
     state
-        .edit(move |store| {
-            add_manual_price_for_asset(store, input.asset_id, input.price, &input.currency)
-        })
+        .edit(move |store| add_manual_price_for_asset(store, id, input.price, &input.currency))
         .await
 }
 
 pub(super) async fn sync_prices(State(state): State<AppState>) -> Result<Response, WebError> {
     match state.refresh_prices().await {
-        Ok(summary) => {
+        Ok(PriceRefresh::Updated(summary)) => {
             let notice = format!(
                 "Updated {} quotes. {} assets have no supported provider quote.",
                 summary.updated, summary.unsupported
             );
-            Ok(asset_list_page(
-                &state,
-                &PageQuery::default(),
-                None,
-                Feedback::notice(notice),
+            Ok(
+                asset_list_page(&state, &PageQuery::default(), Feedback::notice(notice))
+                    .await?
+                    .into_response(),
             )
-            .await?
-            .into_response())
         }
-        Err(error) => Ok((
-            error.status,
-            asset_list_page(
+        Ok(PriceRefresh::AlreadyRunning) => {
+            price_refresh_error(
                 &state,
-                &PageQuery::default(),
-                None,
-                Feedback::error(error.message),
+                WebError::invalid("A price refresh is already running."),
             )
-            .await?,
-        )
-            .into_response()),
+            .await
+        }
+        Err(error) => price_refresh_error(&state, error).await,
     }
+}
+
+async fn price_refresh_error(state: &AppState, error: WebError) -> Result<Response, WebError> {
+    Ok((
+        error.status,
+        asset_list_page(state, &PageQuery::default(), Feedback::error(error.message)).await?,
+    )
+        .into_response())
 }

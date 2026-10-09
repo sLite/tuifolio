@@ -111,9 +111,15 @@ pub fn add_manual_price_for_asset(
 ) -> anyhow::Result<()> {
     anyhow::ensure!(price > Decimal::ZERO, "price must be greater than zero");
     anyhow::ensure!(!currency.trim().is_empty(), "price currency is required");
+    let asset = store
+        .data
+        .assets
+        .iter()
+        .find(|asset| asset.id == asset_id)
+        .ok_or_else(|| anyhow::anyhow!("unknown asset"))?;
     anyhow::ensure!(
-        store.data.assets.iter().any(|asset| asset.id == asset_id),
-        "unknown asset"
+        asset.allows_manual_pricing(),
+        "clear the Yahoo symbol and save the asset before recording manual prices"
     );
     store.data.prices.push(Price {
         asset_id,

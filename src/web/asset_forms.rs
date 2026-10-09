@@ -1,7 +1,10 @@
 use serde::Deserialize;
 
 use super::forms::enum_value;
-use crate::{assets::AssetInput, model::Asset};
+use crate::{
+    assets::AssetInput,
+    model::{Asset, AssetKind},
+};
 
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
@@ -42,5 +45,10 @@ impl AssetForm {
             tradingview_symbol: Some(self.tradingview_symbol.clone()),
             valuation_currency: Some(self.valuation_currency.clone()),
         })
+    }
+
+    pub fn supports_intrinsic_valuation(&self) -> bool {
+        enum_value::<AssetKind>(&self.kind, "asset type")
+            .is_ok_and(AssetKind::supports_intrinsic_valuation)
     }
 }

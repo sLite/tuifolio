@@ -138,10 +138,7 @@ fn validate_intrinsic_valuation(asset: &Asset) -> anyhow::Result<()> {
     if let Some(currency) = &asset.valuation_currency {
         validate_symbol(currency, "valuation currency", false)?;
         anyhow::ensure!(
-            matches!(
-                asset.kind,
-                AssetKind::Property | AssetKind::Liability | AssetKind::Custom
-            ),
+            asset.kind.supports_intrinsic_valuation(),
             "intrinsic valuation is only available for property, liabilities, and custom assets"
         );
     }

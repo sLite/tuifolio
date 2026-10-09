@@ -17,13 +17,12 @@
           <a href="/transactions" {% if common.section == "transactions" %}aria-current="page"{% endif %}>Transactions</a>
           <a href="/assets" {% if common.section == "assets" %}aria-current="page"{% endif %}>Assets</a>
         </nav>
-        <form action="/base" method="post" class="base-form" hx-disabled-elt="find button">
+        <form action="/base" method="post" class="base-form">
           <label for="base-currency">Base</label>
           <select id="base-currency" name="currency" data-submit-on-change>
             {% for currency in common.currencies %}<option value="{{ currency }}" {% if currency.as_str() == common.base.as_str() %}selected{% endif %}>{{ currency }}</option>{% endfor %}
           </select>
           <input type="hidden" name="return_to" value="{{ common.return_to }}">
-          <button class="button compact" type="submit">Set</button>
         </form>
       </div>
     </header>

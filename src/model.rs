@@ -18,6 +18,12 @@ pub enum AssetKind {
     Liability,
 }
 
+impl AssetKind {
+    pub fn supports_intrinsic_valuation(self) -> bool {
+        matches!(self, Self::Property | Self::Liability | Self::Custom)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionKind {
     Buy,
@@ -60,6 +66,12 @@ pub enum AssetMetadataSource {
 }
 
 impl Asset {
+    pub fn allows_manual_pricing(&self) -> bool {
+        self.yahoo_symbol
+            .as_deref()
+            .is_none_or(|symbol| symbol.trim().is_empty())
+    }
+
     pub fn yahoo_quote_symbol(&self) -> Option<&str> {
         match self.kind {
             AssetKind::Crypto | AssetKind::Stock | AssetKind::Fund | AssetKind::Commodity => {

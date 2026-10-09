@@ -163,7 +163,6 @@ fn optional_asset_id(value: &str, role: &str) -> anyhow::Result<Option<Id>> {
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
 pub(super) struct PriceForm {
-    pub asset_id: String,
     pub price: String,
     pub currency: String,
 }
@@ -171,7 +170,6 @@ pub(super) struct PriceForm {
 impl PriceForm {
     pub fn input(&self) -> anyhow::Result<ManualPriceInput> {
         Ok(ManualPriceInput {
-            asset_id: self.asset_id.parse().context("select an asset")?,
             price: decimal(&self.price, "price")?,
             currency: self.currency.trim().to_ascii_uppercase(),
         })
@@ -179,7 +177,6 @@ impl PriceForm {
 }
 
 pub(super) struct ManualPriceInput {
-    pub asset_id: Id,
     pub price: Decimal,
     pub currency: String,
 }

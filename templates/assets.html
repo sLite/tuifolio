@@ -2,29 +2,20 @@
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">Asset directory</p><h1>Assets</h1><p class="description">Manage instruments, provider symbols, and recorded prices.</p></div><div class="heading-actions"><form action="/assets/sync" method="post" hx-disabled-elt="find button"><button class="button refresh-button" type="submit" {% if refreshing %}disabled{% endif %}><span class="idle-label">↻ Refresh prices</span><span class="busy-label">Refreshing…</span></button></form><a class="button primary" href="/assets/new">+ Add asset</a></div></div>
 {% if !notice.is_empty() %}<div class="notice success" role="status">{{ notice }}</div>{% endif %}
+{% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
 {% if refreshing %}<div class="notice" role="status">A price refresh is running. You can continue browsing.</div>{% endif %}
-<div class="assets-layout">
   <section class="panel"><div class="panel-heading"><h2>Your assets <span class="count">{{ rows.len() }}</span></h2></div>
-    <form class="filters" action="/assets" method="get" hx-push-url="true"><label class="search-field">Search assets<input type="search" name="search" value="{{ search }}" placeholder="Name, type or provider symbol"></label><button class="button" type="submit">Apply</button><a class="text-link" href="/assets">Reset</a></form>
+    <form class="filters" action="/assets" method="get" data-search-form hx-push-url="true" hx-sync="this:replace" hx-swap="outerHTML show:none"><label class="search-field">Search assets<input id="asset-search" type="search" name="search" value="{{ search }}" placeholder="Name, type or provider symbol"></label><a class="text-link" href="/assets">Reset</a></form>
     <div class="table-scroll" tabindex="0" role="region" aria-label="Assets table"><table>
       <thead><tr><th scope="col">Asset</th><th scope="col">Pricing / providers</th><th scope="col" class="number">Latest prices</th><th scope="col">Actions</th></tr></thead><tbody>
       {% for asset in rows %}<tr data-asset-id="{{ asset.id }}">
         <td><a class="asset-link" href="/assets/{{ asset.id }}">{{ asset.symbol }}</a><span class="cell-subtitle">{{ asset.name }}</span><span class="badge asset-kind">{{ asset.kind }}</span></td>
         <td><span class="badge">{{ asset.pricing }}</span>{% if !asset.yahoo_symbol.is_empty() %}<span class="cell-subtitle">Yahoo <span class="provider-symbol">{{ asset.yahoo_symbol }}</span></span>{% endif %}{% if !asset.tradingview_symbol.is_empty() %}<span class="cell-subtitle">TradingView <span class="provider-symbol">{{ asset.tradingview_symbol }}</span></span>{% endif %}</td>
         <td class="number">{% for price in asset.quotes %}<div class="quote-line {% if price.missing %}warning-text{% endif %}">{{ price.value }} <span class="muted">{{ price.currency }}</span><span class="cell-subtitle">{{ price.source }}{% if !price.timestamp.is_empty() %} · {{ price.timestamp }}{% endif %}</span></div>{% endfor %}</td>
-        <td><div class="row-actions"><a href="/assets/{{ asset.id }}" aria-label="Edit {{ asset.symbol }}">Edit</a><a href="/assets?asset={{ asset.id }}#manual-price" aria-label="Set price for {{ asset.symbol }}">Price</a></div></td>
+        <td><a class="text-link" href="/assets/{{ asset.id }}" aria-label="Edit {{ asset.symbol }}">Edit</a></td>
       </tr>{% endfor %}
       {% if rows.is_empty() %}<tr><td colspan="4" class="empty-table">No assets match this view. <a href="/assets/new">Add an asset</a> to configure it before recording transactions.</td></tr>{% endif %}
       </tbody>
     </table></div>
   </section>
-  <aside><form id="manual-price" class="panel price-editor" action="/assets/prices" method="post" hx-disabled-elt="find button"><h2>Manual price</h2><p class="description">Record a price per unit for an asset.</p>
-    {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
-    <div class="field"><label for="price-asset">Asset</label><select name="asset_id" id="price-asset" required><option value="">Choose an asset</option>{% for option in asset_choices %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
-    <label>Price per unit<input name="price" value="{{ form.price }}" inputmode="decimal" placeholder="0.00" required></label>
-    <label>Currency<input name="currency" value="{{ form.currency }}" list="price-currencies" maxlength="100" required></label>
-    <datalist id="price-currencies">{% for currency in common.currencies %}<option value="{{ currency }}"></option>{% endfor %}</datalist>
-    <button class="button primary" type="submit" {% if asset_choices.is_empty() %}disabled{% endif %}>Save price</button><p class="field-help">The newest quote for an asset and currency wins. A newer provider quote can replace a manual quote.</p>
-  </form><p class="aside-note">Open an asset to edit its name, type, Yahoo symbol, TradingView symbol, or intrinsic valuation. Clearing a provider symbol keeps it cleared.</p></aside>
-</div>
 {% endblock %}

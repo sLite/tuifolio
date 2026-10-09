@@ -3,12 +3,12 @@
 <div class="page-heading"><div><p class="eyebrow">Ledger</p><h1>Transactions</h1><p class="description">{{ pagination.total }} matching entries. Latest first.</p></div><a class="button primary" href="/transactions/new">+ Add transaction</a></div>
 {% if !notice.is_empty() %}<div class="notice success" role="status">{{ notice }}</div>{% endif %}
 <section class="panel">
-  <form class="filters transaction-filters" action="/transactions" method="get" hx-push-url="true">
+  <form class="filters transaction-filters" action="/transactions" method="get" data-search-form hx-push-url="true" hx-sync="this:replace" hx-swap="outerHTML show:none">
     <div class="field"><label for="filter-portfolio">Portfolio</label><select name="portfolio" id="filter-portfolio"><option value="">All portfolios</option>{% for option in portfolios %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
     <div class="field"><label for="filter-asset">Asset</label><select name="asset" id="filter-asset"><option value="">All assets</option>{% for option in assets %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
     <div class="field"><label for="filter-scope">Asset scope</label><select name="scope" id="filter-scope"><option value="primary" {% if !any_side %}selected{% endif %}>Primary asset</option><option value="any" {% if any_side %}selected{% endif %}>Any side, including fees</option></select></div>
-    <label class="search-field">Search<input type="search" name="search" value="{{ search }}" placeholder="Symbol, broker or notes"></label>
-    <button class="button" type="submit">Apply</button><a class="text-link" href="/transactions">Reset</a>
+    <label class="search-field">Search<input id="transaction-search" type="search" name="search" value="{{ search }}" placeholder="Symbol, broker or notes"></label>
+    <a class="text-link" href="/transactions">Reset</a>
   </form>
   <div class="table-scroll" tabindex="0" role="region" aria-label="Transactions table"><table class="transactions-table">
     <thead><tr><th scope="col">Date</th><th scope="col">Portfolio</th><th scope="col">Type</th><th scope="col" class="number">Asset amount</th><th scope="col" class="number">Quote amount</th><th scope="col" class="number">Fee</th><th scope="col">Details</th><th scope="col">Actions</th></tr></thead>

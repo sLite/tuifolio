@@ -1,5 +1,6 @@
 mod assets;
 mod fixture;
+mod manual_prices;
 mod portfolios;
 mod transaction_editing;
 mod transactions;
@@ -17,7 +18,7 @@ use super::{
     views::TransactionsPage,
 };
 use crate::{accounting::build_report, model::LedgerEffect, transactions::add_manual_transaction};
-use fixture::{TestApp, duplicate_asset, html, repeat_transactions};
+use fixture::{TestApp, html, repeat_transactions};
 
 #[tokio::test]
 async fn renders_empty_pages_and_embedded_assets() {
@@ -216,47 +217,6 @@ async fn htmx_saves_navigate_to_a_get_instead_of_reposting() {
     );
     assert_eq!(location["target"], "#app");
     assert_eq!(location["select"], "#app");
-}
-
-#[tokio::test]
-async fn manual_prices_are_validated_and_saved_for_an_asset_id() {
-    let fixture = TestApp::new(true);
-    let btc = fixture.asset_id("BTC").await;
-    let initial = fixture.persisted().prices.len();
-    let invalid = format!("asset_id={btc}&price=-3&currency=EUR");
-    let page = html(
-        fixture.post("/assets/prices", &invalid).await,
-        StatusCode::UNPROCESSABLE_ENTITY,
-    )
-    .await;
-    assert!(page.contains("price must be greater than zero"));
-    assert_eq!(fixture.persisted().prices.len(), initial);
-    let valid = format!("asset_id={btc}&price=90000.123456789&currency=eur");
-    assert_eq!(
-        fixture.post("/assets/prices", &valid).await.status(),
-        StatusCode::SEE_OTHER
-    );
-    let data = fixture.persisted();
-    let price = data.prices.last().unwrap();
-    assert_eq!(price.price, dec!(90000.123456789));
-    assert_eq!(price.currency, "EUR");
-    assert_eq!(price.asset_id, btc);
-}
-
-#[tokio::test]
-async fn manual_prices_distinguish_assets_with_the_same_symbol() {
-    let fixture = TestApp::new(true);
-    let id = fixture
-        .state
-        .edit(|store| Ok(duplicate_asset(store, "Custom BTC")))
-        .await
-        .unwrap();
-    let body = format!("asset_id={id}&price=25&currency=EUR");
-    assert_eq!(
-        fixture.post("/assets/prices", &body).await.status(),
-        StatusCode::SEE_OTHER
-    );
-    assert_eq!(fixture.persisted().prices.last().unwrap().asset_id, id);
 }
 
 #[tokio::test]

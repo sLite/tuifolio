@@ -1,0 +1,10 @@
+<form id="manual-price" class="panel asset-context price-editor" action="/assets/{{ id }}/prices" method="post" hx-disabled-elt="find button">
+  <h2>Manual price</h2>
+  <p class="description">Record a price per unit for {{ form.symbol }}.</p>
+  {% if !price_error.is_empty() %}<div class="notice error" role="alert">{{ price_error }}</div>{% endif %}
+  <label>Price per unit<input name="price" value="{{ price_form.price }}" inputmode="decimal" placeholder="0.00" required></label>
+  <label>Currency<input name="currency" value="{{ price_form.currency }}" list="price-currencies" maxlength="100" required></label>
+  <datalist id="price-currencies">{% for currency in common.currencies %}<option value="{{ currency }}"></option>{% endfor %}</datalist>
+  <button class="button primary" type="submit">Save price</button>
+  <p class="field-help">The newest quote for an asset and currency wins. Intrinsic valuation takes precedence over recorded prices.</p>
+</form>

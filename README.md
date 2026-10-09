@@ -28,8 +28,28 @@ cargo run -- --store /tmp/tuifolio-store.json web
 ```
 
 The server binds to localhost. The interface and its assets work offline;
-refreshing market prices requires an internet connection. Prices refresh when
-you click **Refresh prices**.
+refreshing market prices requires an internet connection.
+
+### Automatic price refresh
+
+While the web server runs, it refreshes prices in the background at startup and
+then every 5 minutes. The interval starts after each refresh attempt finishes,
+so slow requests do not overlap or produce catch-up bursts. Manual **Refresh
+prices** uses the same refresh slot; a scheduled attempt skips if another
+refresh is already running.
+
+Change the interval in seconds, or use `0` for manual-only refreshes:
+
+```sh
+cargo run -- web --price-refresh-seconds 600
+cargo run -- web --price-refresh-seconds 0
+```
+
+Failures retain existing prices and retry after the configured interval. Browsing
+and transaction edits remain available during refreshes. New quotes appear when
+you navigate or reload a view. On shutdown, future scheduled attempts stop and
+an active refresh finishes before the server exits. Refresh scheduling is a
+runtime option; it adds no datastore fields.
 
 ## Web interface
 
@@ -49,17 +69,23 @@ you click **Refresh prices**.
   asset in **Assets** and a portfolio in **Portfolios** before using them in a
   transaction. Dates and times are entered in UTC. Validation errors preserve
   entries and selections.
-- **Assets** combines the asset directory and pricing. Search by name, type, or
-  provider symbol, refresh Yahoo prices, and record manual prices. Each asset has
+- **Assets** lists instruments and recorded prices. Search by name, type, or
+  provider symbol and refresh Yahoo prices. Each asset has
   an editor for its display name, type, Yahoo symbol, TradingView symbol, and
   intrinsic valuation currency, alongside its recorded quotes and transaction
-  links. Assets can be created before their first transaction.
-- The **Base** selector switches between configured valuation currencies.
-- Holdings link to their transactions, asset editor, and configured TradingView charts.
+  links. Record manual prices in the editor after saving an asset without a Yahoo
+  symbol. Assets can be created before their first transaction.
+- The **Base** selector switches between configured valuation currencies on
+  change and requires JavaScript.
+- Search filters submit automatically after a 300 ms typing pause or immediately
+  when a filter dropdown changes. Use **Reset** to clear the filters.
+- Holdings link to their transactions and configured TradingView charts. Manage
+  asset settings through the **Assets** section.
 
-Forms and navigation also work with JavaScript disabled. Monetary amounts stay
-as decimals in Rust; quantities retain their full precision. Fiat valuations
-display two decimal places and crypto valuations display eight.
+Other forms and navigation also work with JavaScript disabled. Submit search
+filters with Enter when JavaScript is disabled. Monetary amounts stay as decimals
+in Rust; quantities retain their full precision. Fiat valuations display two
+decimal places and crypto valuations display eight.
 
 ## Accounting and storage
 
@@ -118,9 +144,17 @@ include their exchange, such as `NASDAQ:AAPL` or `CRYPTO:BTCUSD`. Clear a Yahoo
 symbol to use manual market prices; clear a TradingView symbol to remove the
 chart link. Cash uses exchange rates independently of its Yahoo symbol field.
 
+Manual price recording lives on each asset's edit page and uses that asset's ID.
+An asset with a Yahoo symbol cannot accept new manual prices, including through
+the CLI. Clear the Yahoo symbol and save first. Existing quotes are retained when
+provider settings change. Cash exchange-rate refreshes can still replace manual
+cash quotes.
+
 For property, liabilities, and custom assets, an intrinsic valuation currency
 means each unit of quantity equals one unit of that currency. It takes
 precedence over market prices. Leave the field blank to use recorded prices.
+The input appears only for these types and updates when the type changes with
+JavaScript enabled. Switching to another type omits intrinsic valuation on save.
 
 Currency assets used in accounting must retain a Cash or Crypto type. Their
 display names and provider settings remain editable.
@@ -190,6 +224,8 @@ cargo run -- base BTC
 Web handlers and view models live in `src/web/`, HTML templates in `templates/`,
 and embedded browser assets in `static/`. Rebuild Rust after changing templates
 or assets. Vendored HTMX 2.0.8 and IBM Plex Sans have adjacent license files.
+The stylesheet uses a 17 px body font and 48 px standard controls, with larger
+spacing throughout. Responsive breakpoints are 1440, 1080, and 720 px.
 Tests construct assets, portfolios, transactions, and split events directly;
 they do not depend on CSV files or a personal datastore.
 

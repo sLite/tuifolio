@@ -167,7 +167,7 @@ async fn asset_forms_escape_names_and_unknown_assets_return_not_found() {
 }
 
 #[tokio::test]
-async fn htmx_asset_save_navigates_to_a_get_and_manual_prices_preselect_the_asset() {
+async fn htmx_asset_save_navigates_to_the_asset_editor() {
     let fixture = TestApp::new(true);
     let btc = fixture.asset_id("BTC").await;
     let response = fixture
@@ -182,12 +182,6 @@ async fn htmx_asset_save_navigates_to_a_get_and_manual_prices_preselect_the_asse
     let location: serde_json::Value =
         serde_json::from_str(response.headers()["hx-location"].to_str().unwrap()).unwrap();
     assert_eq!(location["path"], format!("/assets/{btc}?notice=saved"));
-    let page = html(
-        fixture.get(&format!("/assets?asset={btc}")).await,
-        StatusCode::OK,
-    )
-    .await;
-    assert!(page.contains(&format!("<option value=\"{btc}\" selected>")));
 }
 
 #[tokio::test]
@@ -222,4 +216,54 @@ async fn every_existing_asset_symbol_is_read_only_and_forged_changes_are_rejecte
     let asset = data.assets.iter().find(|asset| asset.id == id).unwrap();
     assert_eq!(asset.symbol, "AAPL");
     assert_eq!(asset.name, "Apple");
+}
+
+#[tokio::test]
+async fn intrinsic_valuation_is_visible_only_for_applicable_asset_types() {
+    let fixture = TestApp::new(false);
+    let page = html(fixture.get("/assets/new").await, StatusCode::OK).await;
+    assert!(page.contains("data-intrinsic-valuation hidden disabled"));
+    for kind in [
+        "Fiat",
+        "Crypto",
+        "Stock",
+        "Fund",
+        "Commodity",
+        "Property",
+        "Liability",
+        "Custom",
+    ] {
+        let body = format!("symbol=TEST-{kind}&kind={kind}");
+        let response = fixture.post("/assets/new", &body).await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let path = response.headers()["location"].to_str().unwrap();
+        let page = html(fixture.get(path).await, StatusCode::OK).await;
+        let applicable = matches!(kind, "Property" | "Liability" | "Custom");
+        assert_eq!(
+            page.contains("data-intrinsic-valuation hidden disabled"),
+            !applicable
+        );
+    }
+}
+
+#[tokio::test]
+async fn changing_to_a_market_priced_type_clears_omitted_intrinsic_valuation() {
+    let fixture = TestApp::new(false);
+    fixture
+        .post(
+            "/assets/new",
+            "symbol=HOME&kind=Property&valuation_currency=EUR",
+        )
+        .await;
+    let id = fixture.asset_id("HOME").await;
+    let page = html(fixture.get(&format!("/assets/{id}")).await, StatusCode::OK).await;
+    assert!(!page.contains("data-intrinsic-valuation hidden disabled"));
+    assert!(page.contains("name=\"valuation_currency\" value=\"EUR\""));
+    let response = fixture
+        .post(&format!("/assets/{id}"), "symbol=HOME&kind=Stock")
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let data = fixture.persisted();
+    let asset = data.assets.iter().find(|asset| asset.id == id).unwrap();
+    assert!(asset.valuation_currency.is_none());
 }
