@@ -7,6 +7,7 @@
 <div class="editor-layout">
   <div class="asset-editor-column">
   <form class="editor panel" action="{% if let Some(id) = id %}/assets/{{ id }}{% else %}/assets/new{% endif %}" method="post" data-asset-form hx-disabled-elt="find button[type='submit']">
+    {% if id.is_some() %}<input type="hidden" name="expected_revision" value="{{ form.expected_revision }}">{% endif %}
     {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
     <fieldset><legend><span class="section-number">01</span> Identity</legend><div class="form-grid">
       <label>Symbol<input name="symbol" value="{{ form.symbol }}" placeholder="e.g. AAPL" required maxlength="100" {% if id.is_some() %}readonly aria-describedby="asset-symbol-help"{% endif %}></label>

@@ -8,6 +8,7 @@ use axum::{
 use super::{
     asset_forms::AssetForm,
     asset_views::{AssetEditorPage, AssetsPage, Feedback},
+    edit_revision::check_revision,
     error::{WebError, render},
     forms::PriceForm,
     navigation::navigate,
@@ -111,10 +112,21 @@ async fn save_asset_form(
     headers: &HeaderMap,
     form: AssetForm,
 ) -> Result<Response, WebError> {
-    let result = match form.input() {
-        Ok(input) => state.edit(move |store| save_asset(store, id, input)).await,
-        Err(error) => Err(WebError::invalid(error)),
-    };
+    let submitted = form.clone();
+    let result = state
+        .edit(move |store| {
+            if let Some(id) = id {
+                let previous = store
+                    .data
+                    .assets
+                    .iter()
+                    .find(|asset| asset.id == id)
+                    .ok_or_else(|| anyhow::anyhow!("unknown asset"))?;
+                check_revision(previous, &submitted.expected_revision, "asset")?;
+            }
+            save_asset(store, id, submitted.input()?)
+        })
+        .await;
     match result {
         Ok(id) => {
             tracing::info!(asset_id = id, "asset saved");

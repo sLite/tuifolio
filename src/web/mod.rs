@@ -1,6 +1,7 @@
 mod asset_forms;
 mod asset_handlers;
 mod asset_views;
+mod edit_revision;
 mod error;
 mod forms;
 mod handlers;

@@ -6,6 +6,7 @@ use axum::{
 };
 
 use super::{
+    edit_revision::check_revision,
     error::{WebError, render},
     forms::TransactionForm,
     navigation::navigate,
@@ -99,17 +100,24 @@ async fn save_transaction(
     id: Option<Id>,
     form: &TransactionForm,
 ) -> Result<ManualTransactionResult, WebError> {
-    let input = if let Some(id) = id {
-        let data = state.snapshot().await?;
-        form.input_for_edit(find_transaction(&data, id)?)
-    } else {
-        form.input()
+    if let Some(id) = id {
+        find_transaction(&state.snapshot().await?, id)?;
     }
-    .map_err(WebError::invalid)?;
+    let form = form.clone();
     state
         .edit(move |store| match id {
-            Some(id) => update_transaction(store, id, input),
-            None => add_manual_transaction(store, input),
+            Some(id) => {
+                let previous = store
+                    .data
+                    .transactions
+                    .iter()
+                    .find(|transaction| transaction.id == id)
+                    .ok_or_else(|| anyhow::anyhow!("transaction does not exist"))?;
+                check_revision(previous, &form.expected_revision, "transaction")?;
+                let input = form.input_for_edit(previous)?;
+                update_transaction(store, id, input)
+            }
+            None => add_manual_transaction(store, form.input()?),
         })
         .await
 }

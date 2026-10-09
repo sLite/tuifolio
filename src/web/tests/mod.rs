@@ -1,5 +1,6 @@
 mod asset_quotes;
 mod assets;
+mod edit_conflicts;
 mod fixture;
 mod gifts;
 mod manual_prices;

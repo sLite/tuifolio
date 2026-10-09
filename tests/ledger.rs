@@ -102,23 +102,19 @@ fn ledger_rebuild_fails_on_missing_posted_asset() {
 }
 
 #[test]
-fn legacy_asset_posting_flags_cannot_suppress_asset_movements() {
+fn transactions_reject_removed_asset_posting_flags() {
     for effect in ["Post", "Ignore"] {
         let mut store = ledger_store();
         let asset_id = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
         let movement = transaction(&mut store, asset_id, TransactionKind::Deposit, Decimal::ONE);
         let mut legacy = serde_json::to_value(&movement).unwrap();
         legacy["base_ledger_effect"] = effect.into();
-        let loaded: Transaction = serde_json::from_value(legacy).unwrap();
+        let error = serde_json::from_value::<Transaction>(legacy).unwrap_err();
         assert!(
-            serde_json::to_value(&loaded)
-                .unwrap()
-                .get("base_ledger_effect")
-                .is_none()
+            error
+                .to_string()
+                .contains("unknown field `base_ledger_effect`")
         );
-        store.data.transactions.push(loaded);
-        rebuild_ledger(&mut store.data).unwrap();
-        assert_eq!(balance(&store, asset_id), Decimal::ONE);
     }
 }
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub type Id = u64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AssetKind {
     Fiat,
     Crypto,
@@ -24,7 +24,7 @@ impl AssetKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TransactionKind {
     Buy,
     Sell,
@@ -72,7 +72,7 @@ pub struct Portfolio {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct Asset {
     pub id: Id,
     pub symbol: String,
@@ -88,7 +88,7 @@ pub struct Asset {
     pub metadata_source: AssetMetadataSource,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AssetMetadataSource {
     #[default]
     Automatic,
@@ -112,7 +112,8 @@ impl Asset {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Transaction {
     pub id: Id,
     pub portfolio_id: Id,
@@ -136,7 +137,7 @@ pub struct Transaction {
     pub source_row_hash: String,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LedgerEffect {
     #[default]
     Post,
@@ -180,8 +181,8 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StockSplit {
-    #[serde(default)]
     pub asset_id: Id,
     pub effective_date: String,
     #[serde(with = "rust_decimal::serde::str")]

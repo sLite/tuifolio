@@ -58,6 +58,17 @@ impl TestApp {
         self.request("POST", path, body, None).await
     }
 
+    /// Capture the version from the rendered form, just as a browser does.
+    pub async fn edit_body(&self, path: &str, body: &str) -> String {
+        let page = html(self.get(path).await, StatusCode::OK).await;
+        format!("{body}&expected_revision={}", edit_revision(&page))
+    }
+
+    pub async fn submit_edit(&self, path: &str, body: &str) -> Response {
+        let body = self.edit_body(path, body).await;
+        self.post(path, &body).await
+    }
+
     pub async fn request(
         &self,
         method: &str,
@@ -235,6 +246,15 @@ pub(super) fn repeat_transactions(mut data: StoreData, count: usize) -> StoreDat
         data.transactions.push(next);
     }
     data
+}
+
+pub(super) fn edit_revision(page: &str) -> &str {
+    page.split("name=\"expected_revision\" value=\"")
+        .nth(1)
+        .expect("edit form must contain a version")
+        .split('"')
+        .next()
+        .unwrap()
 }
 
 pub(super) async fn html(response: Response, status: StatusCode) -> String {

@@ -150,7 +150,7 @@ async fn changing_a_trade_to_deposit_clears_omitted_quote_fields() {
     let path = format!("/transactions/{}/edit", previous.id);
     assert_eq!(
         fixture
-            .post(&path, &body(&fixture, "Deposit"))
+            .submit_edit(&path, &body(&fixture, "Deposit"))
             .await
             .status(),
         StatusCode::SEE_OTHER

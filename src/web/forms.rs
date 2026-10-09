@@ -3,7 +3,7 @@ use chrono::{NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::query::PageQuery;
+use super::{edit_revision::record_revision, query::PageQuery};
 use crate::{
     model::{AssetKind, Id, LedgerEffect, StoreData, Transaction, TransactionKind},
     transactions::ManualTransactionInput,
@@ -12,6 +12,7 @@ use crate::{
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
 pub(super) struct TransactionForm {
+    pub expected_revision: String,
     pub portfolio_id: String,
     pub timestamp: String,
     pub kind: String,
@@ -30,6 +31,7 @@ pub(super) struct TransactionForm {
 impl TransactionForm {
     pub fn from_transaction(transaction: &Transaction) -> Self {
         Self {
+            expected_revision: record_revision(transaction),
             portfolio_id: transaction.portfolio_id.to_string(),
             timestamp: transaction
                 .timestamp

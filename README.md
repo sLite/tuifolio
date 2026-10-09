@@ -112,6 +112,11 @@ under `tuifolio/store.json`, unless you supply `--store`.
   no ticker-specific split events are inserted automatically.
 - Yahoo quotes support crypto, stocks, funds, fiat exchange rates, and
   commodities through per-asset provider symbols.
+- USD is the fiat conversion intermediary and must use the Cash asset type.
+  Fiat-to-crypto refreshes resolve the USD step directly, without recursion.
+  If an existing store misclassifies USD, refresh returns an error before
+  contacting Yahoo. The web server stays available, and cached prices remain
+  unchanged. Correct the USD asset type in its editor before refreshing again.
 - PnL is derived from transactions, ledger entries, and prices. It is not
   persisted as canonical accounting truth.
 
@@ -239,6 +244,15 @@ successful save. Price refreshes fetch outside the datastore lock, then merge
 their quotes into the current data, preserving edits made during the refresh.
 Quotes fetched with provider settings that changed during a refresh are discarded.
 
+Transaction and asset editors include the record version loaded by the form.
+Saving checks that version while holding the datastore lock. If the record has
+changed in another tab, or the submitted version is missing, the server returns
+HTTP 409 and preserves the submitted form without saving it. Copy your draft,
+open the latest saved record, and reapply your changes. Retrying the stale form
+does not bypass the conflict check. Unrelated edits and price refreshes do not
+invalidate a record's version. This works with and without JavaScript and adds
+no datastore fields.
+
 One Tuifolio process owns a datastore at a time. Stop the web server before
 running CLI commands against the same datastore. The adjacent `.lock` file is
 normal; the operating system releases its lock when the process exits.
@@ -263,13 +277,21 @@ Quote/cash posting effects, intrinsic valuation currencies, prices and their
 sources, and asset-ID stock split events are active accounting features, not
 obsolete import fields. Existing configured split events continue to affect balances.
 
-The asset-side `base_ledger_effect` field and "Record only" option have been
-removed. Older stores still load, but that field is ignored and omitted on the
-next save. Asset movements always post when the ledger is rebuilt.
+There is no automatic datastore migration. Transactions and stock splits must
+use the current format; unknown fields are rejected rather than silently dropped.
 
-The obsolete symbol-based stock-split field and conversion code were removed.
-Splits must already reference asset IDs; old symbol-only configurations are no
-longer converted. This does not alter the converted split-event representation.
+The asset-side `base_ledger_effect` field and "Record only" option are unsupported.
+Stores containing that transaction field fail to load, including when its value
+is `Post`. Asset movements always post in the supported format.
+
+Every stock split must explicitly reference an `asset_id`. Symbol-based splits
+are rejected, even if an asset ID is also present. Current asset-ID splits
+continue to work unchanged.
+
+If loading fails on these old fields, use a compatible store snapshot or
+reconcile and convert a separate copy before using it. Do not simply delete an
+`Ignore` posting flag or a split symbol to bypass the error; that can change
+balances. A rejected store is not rewritten.
 
 ## CLI commands
 

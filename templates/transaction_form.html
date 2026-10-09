@@ -4,6 +4,7 @@
 <div class="page-heading"><div><p class="eyebrow">Ledger entry</p><h1>{{ common.title }}</h1><p class="description">{% if let Some(id) = id %}Entry #{{ id }}{% else %}Record an asset movement and its optional cash effect.{% endif %}</p></div><div class="heading-actions"><a class="button" href="/portfolios/new">Create a portfolio</a><a class="button" href="/assets/new">Create an asset</a></div></div>
 <div {% if id.is_some() %}class="editor-layout"{% endif %}>
 <form class="editor panel" action="{% if let Some(id) = id %}/transactions/{{ id }}/edit{% else %}/transactions/new{% endif %}" method="post" data-transaction-form {% if let Some(id) = id %}data-transaction-id="{{ id }}"{% endif %} hx-disabled-elt="find button[type='submit']">
+  {% if id.is_some() %}<input type="hidden" name="expected_revision" value="{{ form.expected_revision }}">{% endif %}
   {% if !error.is_empty() %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
   {% if assets.is_empty() %}<div class="notice warning">Create an asset in the asset directory before recording a transaction. <a href="/assets/new">Create an asset →</a></div>{% endif %}
   {% if portfolios.is_empty() %}<div class="notice warning">Create a portfolio before recording a transaction. <a href="/portfolios/new">Create a portfolio →</a></div>{% endif %}

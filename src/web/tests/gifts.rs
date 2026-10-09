@@ -106,7 +106,7 @@ async fn changing_a_paid_transaction_to_gift_clears_quotes_and_preserves_fees_an
     let path = format!("/transactions/{}/edit", previous.id);
     let gift = fixture.body("Gift") + &extras;
     assert_eq!(
-        fixture.app.post(&path, &gift).await.status(),
+        fixture.app.submit_edit(&path, &gift).await.status(),
         StatusCode::SEE_OTHER
     );
     fixture.assert_zero_basis();
@@ -131,7 +131,7 @@ async fn no_op_gift_edits_preserve_the_record_and_implicit_cost_basis() {
     assert_eq!(
         fixture
             .app
-            .post(&format!("/transactions/{id}/edit"), &body)
+            .submit_edit(&format!("/transactions/{id}/edit"), &body)
             .await
             .status(),
         StatusCode::SEE_OTHER
@@ -155,7 +155,7 @@ async fn changing_gift_to_an_unquoted_asset_increase_restores_unknown_basis() {
     assert_eq!(
         fixture
             .app
-            .post(&format!("/transactions/{id}/edit"), &body)
+            .submit_edit(&format!("/transactions/{id}/edit"), &body)
             .await
             .status(),
         StatusCode::SEE_OTHER

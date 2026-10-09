@@ -4,6 +4,8 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 
+use super::edit_revision::EditConflict;
+
 #[derive(Debug)]
 pub(super) struct WebError {
     pub status: StatusCode,
@@ -18,6 +20,17 @@ struct ErrorPage<'a> {
 }
 
 impl WebError {
+    pub fn edit(error: anyhow::Error) -> Self {
+        if error.is::<EditConflict>() {
+            Self {
+                status: StatusCode::CONFLICT,
+                message: error.to_string(),
+            }
+        } else {
+            Self::invalid(error)
+        }
+    }
+
     pub fn invalid(error: impl std::fmt::Display) -> Self {
         Self {
             status: StatusCode::UNPROCESSABLE_ENTITY,

@@ -3,6 +3,19 @@ use crate::{
     store::Store,
 };
 
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "USD must use the Cash asset type because it is the fiat conversion intermediary. Set the USD asset to Cash before saving or refreshing prices."
+)]
+pub(crate) struct InvalidUsdAsset;
+
+pub(crate) fn validate_usd_asset(asset: &Asset) -> anyhow::Result<()> {
+    if asset.symbol.eq_ignore_ascii_case("USD") && asset.kind != AssetKind::Fiat {
+        return Err(InvalidUsdAsset.into());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub struct AssetInput {
     pub symbol: String,
@@ -79,6 +92,7 @@ fn validate_asset(data: &StoreData, asset: &Asset, previous: Option<&Asset>) -> 
         "asset name must be at most 200 characters"
     );
     validate_identity(data, asset, previous)?;
+    validate_usd_asset(asset)?;
     if previous.is_none() && data.config.base_currencies.contains(&asset.symbol) {
         anyhow::ensure!(
             matches!(asset.kind, AssetKind::Fiat | AssetKind::Crypto),

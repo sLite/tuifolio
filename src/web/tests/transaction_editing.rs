@@ -14,8 +14,9 @@ fn record_id(fixture: &TestApp) -> crate::model::Id {
     fixture.persisted().transactions[0].id
 }
 
-fn form_body(form: &TransactionForm) -> String {
+pub(super) fn form_body(form: &TransactionForm) -> String {
     [
+        ("expected_revision", form.expected_revision.clone()),
         ("portfolio_id", form.portfolio_id.clone()),
         ("timestamp", form.timestamp.clone()),
         ("kind", form.kind.clone()),

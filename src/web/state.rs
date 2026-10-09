@@ -5,6 +5,7 @@ use std::sync::{
 
 use super::error::WebError;
 use crate::{
+    assets::InvalidUsdAsset,
     model::StoreData,
     price_sync::{PriceBatch, SyncSummary, fetch_prices, merge_price_batch},
     store::Store,
@@ -67,7 +68,7 @@ impl AppState {
     ) -> Result<T, WebError> {
         let mut current = self.store.lock().map_err(lock_error)?;
         let mut candidate = current.clone();
-        let result = operation(&mut candidate).map_err(WebError::invalid)?;
+        let result = operation(&mut candidate).map_err(WebError::edit)?;
         candidate.save()?;
         *current = candidate;
         Ok(result)
@@ -109,6 +110,9 @@ impl AppState {
 
 fn provider_error(error: anyhow::Error) -> WebError {
     tracing::warn!(%error, "price refresh failed; existing prices retained");
+    if error.is::<InvalidUsdAsset>() {
+        return WebError::invalid(error);
+    }
     WebError {
         status: axum::http::StatusCode::BAD_GATEWAY,
         message: "The price provider could not be reached. Existing prices have been retained. Try again shortly.".into(),

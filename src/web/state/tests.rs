@@ -23,6 +23,94 @@ impl Fixture {
     }
 }
 
+#[tokio::test]
+async fn invalid_stored_usd_configuration_returns_actionable_errors_without_changing_data() {
+    use crate::{
+        assets::{AssetInput, save_asset},
+        model::AssetKind,
+    };
+    let fixture = Fixture::new();
+    fixture
+        .state
+        .edit(|store| {
+            for symbol in ["EUR", "USD"] {
+                save_asset(
+                    store,
+                    None,
+                    AssetInput {
+                        symbol: symbol.into(),
+                        name: symbol.into(),
+                        kind: AssetKind::Fiat,
+                        yahoo_symbol: None,
+                        tradingview_symbol: None,
+                        valuation_currency: None,
+                    },
+                )?;
+            }
+            // Bypass current validation to exercise previously accepted stored data.
+            store
+                .data
+                .assets
+                .iter_mut()
+                .find(|asset| asset.symbol == "USD")
+                .unwrap()
+                .kind = AssetKind::Crypto;
+            crate::price_sync::add_manual_price(store, "EUR", rust_decimal::Decimal::ONE, "USD")
+        })
+        .await
+        .unwrap();
+    let before = serde_json::to_value(fixture.state.snapshot().await.unwrap()).unwrap();
+    let path = fixture.directory.path().join("data/store.json");
+    let bytes = std::fs::read(&path).unwrap();
+    for _ in 0..2 {
+        let error = fixture.state.refresh_prices().await.err().unwrap();
+        assert_eq!(error.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(error.message.contains("USD must use the Cash asset type"));
+        assert!(!fixture.state.is_refreshing());
+        assert_eq!(
+            serde_json::to_value(fixture.state.snapshot().await.unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+    // Repair the asset, then verify the next refresh job can use the slot.
+    fixture
+        .state
+        .edit(|store| {
+            let usd = store.asset_by_symbol("USD").unwrap().clone();
+            save_asset(
+                store,
+                Some(usd.id),
+                AssetInput {
+                    symbol: usd.symbol,
+                    name: usd.name,
+                    kind: AssetKind::Fiat,
+                    yahoo_symbol: None,
+                    tradingview_symbol: None,
+                    valuation_currency: None,
+                },
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture
+            .state
+            .refresh_with(|data| {
+                assert!(
+                    data.assets
+                        .iter()
+                        .any(|asset| asset.symbol == "USD" && asset.kind == AssetKind::Fiat)
+                );
+                Ok(empty_batch())
+            })
+            .await
+            .unwrap(),
+        PriceRefresh::Updated(_)
+    ));
+}
+
 fn empty_batch() -> PriceBatch {
     PriceBatch {
         prices: Vec::new(),

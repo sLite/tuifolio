@@ -142,7 +142,7 @@ async fn editing_unknown_basis_to_zero_preserves_the_transaction_and_creates_no_
     let path = format!("/transactions/{}/edit", previous.id);
     for amount in ["0", "0.00"] {
         let body = fixture.body(AssetIncrease, 350000, amount, Ignore);
-        let response = fixture.app.post(&path, &body).await;
+        let response = fixture.app.submit_edit(&path, &body).await;
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         fixture.assert_zero_basis();
         let updated = &fixture.app.persisted().transactions[0];
@@ -243,7 +243,7 @@ async fn editing_the_asset_quote_cash_effect_updates_cash_and_preserves_the_reco
     let path = format!("/transactions/{}/edit", previous.id);
     let body = fixture.body(AssetIncrease, 500000, "420000", Post);
     assert_eq!(
-        fixture.app.post(&path, &body).await.status(),
+        fixture.app.submit_edit(&path, &body).await.status(),
         StatusCode::SEE_OTHER
     );
     let updated = &fixture.app.persisted().transactions[0];

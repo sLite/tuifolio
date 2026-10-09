@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use super::forms::enum_value;
+use super::{edit_revision::record_revision, forms::enum_value};
 use crate::{
     assets::AssetInput,
     model::{Asset, AssetKind},
@@ -9,6 +9,7 @@ use crate::{
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
 pub(super) struct AssetForm {
+    pub expected_revision: String,
     pub symbol: String,
     pub name: String,
     pub kind: String,
@@ -27,6 +28,7 @@ impl AssetForm {
 
     pub fn from_asset(asset: &Asset) -> Self {
         Self {
+            expected_revision: record_revision(asset),
             symbol: asset.symbol.clone(),
             name: asset.name.clone(),
             kind: format!("{:?}", asset.kind),

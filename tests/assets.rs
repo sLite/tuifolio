@@ -405,4 +405,67 @@ fn refresh_keeps_quotes_and_other_edits_when_only_display_metadata_changed() {
     assert_eq!(fixture.asset().name, "Edited during refresh");
     assert_eq!(fixture.store.data.prices.len(), 2);
 }
+
+#[test]
+fn usd_cannot_be_created_with_a_non_cash_type() {
+    let mut fixture = Fixture::new();
+    let before = serde_json::to_value(&fixture.store.data).unwrap();
+    for kind in [AssetKind::Crypto, AssetKind::Stock, AssetKind::Custom] {
+        let input = AssetInput {
+            symbol: " usd ".into(),
+            name: "US dollar".into(),
+            kind,
+            yahoo_symbol: None,
+            tradingview_symbol: None,
+            valuation_currency: None,
+        };
+        let error = save_asset(&mut fixture.store, None, input).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("USD must use the Cash asset type")
+        );
+        assert_eq!(serde_json::to_value(&fixture.store.data).unwrap(), before);
+    }
+}
+
+#[test]
+fn usd_type_edits_are_rejected_atomically_and_existing_bad_types_can_be_repaired() {
+    let mut fixture = Fixture::new();
+    let usd = support::create_asset(&mut fixture.store, "USD", "US dollar", AssetKind::Fiat);
+    let input = AssetInput {
+        symbol: "USD".into(),
+        name: "US dollar".into(),
+        kind: AssetKind::Crypto,
+        yahoo_symbol: None,
+        tradingview_symbol: None,
+        valuation_currency: None,
+    };
+    let before = serde_json::to_value(&fixture.store.data).unwrap();
+    let error = save_asset(&mut fixture.store, Some(usd), input.clone()).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("USD must use the Cash asset type")
+    );
+    assert_eq!(serde_json::to_value(&fixture.store.data).unwrap(), before);
+
+    // Simulate an existing store written before this validation rule.
+    fixture
+        .store
+        .data
+        .assets
+        .iter_mut()
+        .find(|asset| asset.id == usd)
+        .unwrap()
+        .kind = AssetKind::Crypto;
+    let mut repaired = input;
+    repaired.kind = AssetKind::Fiat;
+    save_asset(&mut fixture.store, Some(usd), repaired).unwrap();
+    assert_eq!(
+        fixture.store.asset_by_symbol("USD").unwrap().kind,
+        AssetKind::Fiat
+    );
+}
+
 pub mod support;

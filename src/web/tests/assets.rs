@@ -2,6 +2,38 @@ use super::fixture::{TestApp, configure_asset, html};
 use crate::model::{AssetKind, AssetMetadataSource};
 use axum::http::StatusCode;
 
+#[tokio::test]
+async fn usd_type_validation_preserves_create_and_edit_forms_without_saving() {
+    let empty = TestApp::new(false);
+    let page = html(
+        empty
+            .post("/assets/new", "symbol=USD&name=US%20dollar&kind=Crypto")
+            .await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+    )
+    .await;
+    assert!(page.contains("USD must use the Cash asset type"));
+    assert!(page.contains("name=\"symbol\" value=\"USD\""));
+    assert!(empty.persisted().assets.is_empty());
+
+    let fixture = TestApp::with_assets();
+    let usd = fixture.asset_id("USD").await;
+    let before = serde_json::to_value(fixture.persisted()).unwrap();
+    let page = html(
+        fixture
+            .submit_edit(
+                &format!("/assets/{usd}"),
+                "symbol=USD&name=My%20draft&kind=Crypto",
+            )
+            .await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+    )
+    .await;
+    assert!(page.contains("USD must use the Cash asset type"));
+    assert!(page.contains("name=\"name\" value=\"My draft\""));
+    assert_eq!(serde_json::to_value(fixture.persisted()).unwrap(), before);
+}
+
 fn crypto_body() -> &'static str {
     "symbol=BTC&name=Bitcoin&kind=Crypto&yahoo_symbol=BTC-USD&tradingview_symbol=CRYPTO%3ABTCUSD&valuation_currency="
 }
@@ -26,7 +58,7 @@ async fn asset_updates_preserve_references_and_are_visible_in_transaction_choice
     let btc = fixture.asset_id("BTC").await;
     let original = fixture.persisted();
     let body = crypto_body().replace("name=Bitcoin", "name=Bitcoin%20edited");
-    let response = fixture.post(&format!("/assets/{btc}"), &body).await;
+    let response = fixture.submit_edit(&format!("/assets/{btc}"), &body).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         response.headers()["location"],
@@ -54,7 +86,7 @@ async fn invalid_edits_preserve_values_and_do_not_save() {
         "tradingview_symbol=BAD",
     ) + "&unknown=ignored";
     let page = html(
-        fixture.post(&format!("/assets/{btc}"), &body).await,
+        fixture.submit_edit(&format!("/assets/{btc}"), &body).await,
         StatusCode::UNPROCESSABLE_ENTITY,
     )
     .await;
@@ -64,7 +96,7 @@ async fn invalid_edits_preserve_values_and_do_not_save() {
     let bad_currency = crypto_body().replace("symbol=BTC", "symbol=RENAMED");
     assert_eq!(
         fixture
-            .post(&format!("/assets/{btc}"), &bad_currency)
+            .submit_edit(&format!("/assets/{btc}"), &bad_currency)
             .await
             .status(),
         StatusCode::UNPROCESSABLE_ENTITY
@@ -78,7 +110,10 @@ async fn clears_provider_symbols_without_defaults_being_reapplied() {
     let body =
         "symbol=BTC&name=Bitcoin&kind=Crypto&yahoo_symbol=&tradingview_symbol=&valuation_currency=";
     assert_eq!(
-        fixture.post(&format!("/assets/{btc}"), body).await.status(),
+        fixture
+            .submit_edit(&format!("/assets/{btc}"), body)
+            .await
+            .status(),
         StatusCode::SEE_OTHER
     );
     let data = fixture.persisted();
@@ -122,7 +157,7 @@ async fn failed_asset_saves_preserve_form_input_and_roll_back() {
     std::fs::File::create(fixture.path.parent().unwrap()).unwrap();
     let body = crypto_body().replace("name=Bitcoin", "name=Unsaved%20name");
     let page = html(
-        fixture.post(&format!("/assets/{btc}"), &body).await,
+        fixture.submit_edit(&format!("/assets/{btc}"), &body).await,
         StatusCode::INTERNAL_SERVER_ERROR,
     )
     .await;
@@ -149,7 +184,7 @@ async fn asset_forms_escape_names_and_unknown_assets_return_not_found() {
     );
     assert_eq!(
         fixture
-            .post(&format!("/assets/{btc}"), &body)
+            .submit_edit(&format!("/assets/{btc}"), &body)
             .await
             .status(),
         StatusCode::SEE_OTHER
@@ -170,13 +205,11 @@ async fn asset_forms_escape_names_and_unknown_assets_return_not_found() {
 async fn htmx_asset_save_navigates_to_the_asset_editor() {
     let fixture = TestApp::new(true);
     let btc = fixture.asset_id("BTC").await;
+    let body = fixture
+        .edit_body(&format!("/assets/{btc}"), crypto_body())
+        .await;
     let response = fixture
-        .request(
-            "POST",
-            &format!("/assets/{btc}"),
-            crypto_body(),
-            Some("true"),
-        )
+        .request("POST", &format!("/assets/{btc}"), &body, Some("true"))
         .await;
     assert_eq!(response.status(), StatusCode::OK);
     let location: serde_json::Value =
@@ -206,7 +239,7 @@ async fn every_existing_asset_symbol_is_read_only_and_forged_changes_are_rejecte
     assert!(page.contains("readonly aria-describedby=\"asset-symbol-help\""));
     let body = "symbol=RENAMED&name=Updated%20display%20name&kind=Stock&yahoo_symbol=AAPL&tradingview_symbol=NASDAQ%3AAAPL";
     let page = html(
-        fixture.post(&format!("/assets/{id}"), body).await,
+        fixture.submit_edit(&format!("/assets/{id}"), body).await,
         StatusCode::UNPROCESSABLE_ENTITY,
     )
     .await;
@@ -260,7 +293,7 @@ async fn changing_to_a_market_priced_type_clears_omitted_intrinsic_valuation() {
     assert!(!page.contains("data-intrinsic-valuation hidden disabled"));
     assert!(page.contains("name=\"valuation_currency\" value=\"EUR\""));
     let response = fixture
-        .post(&format!("/assets/{id}"), "symbol=HOME&kind=Stock")
+        .submit_edit(&format!("/assets/{id}"), "symbol=HOME&kind=Stock")
         .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let data = fixture.persisted();

@@ -120,7 +120,7 @@ async fn clearing_a_yahoo_symbol_enables_manual_price_recording() {
     let fixture = TestApp::new(true);
     let btc = fixture.asset_id("BTC").await;
     fixture
-        .post(
+        .submit_edit(
             &format!("/assets/{btc}"),
             "symbol=BTC&name=Bitcoin&kind=Crypto&yahoo_symbol=",
         )
