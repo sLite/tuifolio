@@ -82,6 +82,11 @@ runtime option; it adds no datastore fields.
   before their first transaction.
 - The **Base** selector switches between configured valuation currencies on
   change and requires JavaScript.
+- **Privacy** in the header hides totals, PnL, prices, transaction amounts, fees,
+  and quantities behind the same six-dot mask, regardless of size or sign. It
+  remembers your choice in this browser across navigation and reloads. Amount
+  fields are hidden while privacy is on; turn it off to edit them. This
+  screenshot mode requires JavaScript. Names, notes, and other text stay visible.
 - Search filters submit automatically after a 300 ms typing pause or immediately
   when a filter dropdown changes. Use **Reset** to clear the filters.
 - Holdings link to their transactions and configured TradingView charts. Manage

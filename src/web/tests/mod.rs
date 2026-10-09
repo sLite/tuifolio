@@ -5,6 +5,7 @@ mod gifts;
 mod manual_prices;
 mod portfolio_pnl;
 mod portfolios;
+mod privacy;
 mod quote_visibility;
 mod stock_splits;
 mod transaction_details;
@@ -43,6 +44,7 @@ async fn renders_empty_pages_and_embedded_assets() {
     for (name, content_type) in [
         ("style.css", "text/css"),
         ("app.js", "text/javascript"),
+        ("privacy.js", "text/javascript"),
         ("htmx.min.js", "text/javascript"),
         ("plex-sans-latin.woff2", "font/woff2"),
     ] {

@@ -1,11 +1,12 @@
 {% extends "layout.html" %}
+{% import "privacy.html" as privacy %}
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">Balance sheet</p><h1>Overview</h1><p class="description">Current holdings valued in {{ common.base }}.</p></div><a class="button primary" href="/transactions/new"><span aria-hidden="true">+</span> Add transaction</a></div>
 <section class="metrics" aria-label="Portfolio totals">
-  <div class="metric net-worth"><span class="metric-label">Net worth</span><strong>{{ summary.net.text }}</strong><span class="metric-note">{{ common.base }} · assets less liabilities</span></div>
-  <div class="metric"><span class="metric-label">Assets</span><strong>{{ summary.assets.text }}</strong><span class="metric-note">{{ common.base }}</span></div>
-  <div class="metric"><span class="metric-label">Liabilities</span><strong>{{ summary.liabilities.text }}</strong><span class="metric-note">{{ common.base }}</span></div>
-  <div class="metric"><span class="metric-label">Unrealized PnL</span><strong class="{{ summary.pnl.tone }}">{{ summary.pnl.text }}</strong><span class="metric-note">{{ common.base }} · where cost basis is available</span></div>
+  <div class="metric net-worth"><span class="metric-label">Net worth</span><strong>{% call privacy::amount(summary.net.text) %}</strong><span class="metric-note">{{ common.base }} · assets less liabilities</span></div>
+  <div class="metric"><span class="metric-label">Assets</span><strong>{% call privacy::amount(summary.assets.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Liabilities</span><strong>{% call privacy::amount(summary.liabilities.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Unrealized PnL</span><strong class="{{ summary.pnl.tone }}">{% call privacy::amount(summary.pnl.text) %}</strong><span class="metric-note">{{ common.base }} · where cost basis is available</span></div>
 </section>
 {% if summary.missing > 0 %}<div class="notice warning"><span>{{ summary.missing }} holdings have no valuation. Totals exclude these holdings.</span><a href="/assets">Review assets →</a></div>{% endif %}
 {% if summary.negative > 0 %}<div class="notice warning">{{ summary.negative }} non-liability holdings have negative balances. Check their ledger transactions.</div>{% endif %}

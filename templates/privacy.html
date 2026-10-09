@@ -1,0 +1,3 @@
+{% macro amount(value) -%}
+{% if value.is_empty() || value == "Unavailable" %}{{ value }}{% else %}<span class="private-amount"><span class="private-value">{{ value }}</span><span class="private-mask" role="img" aria-label="Hidden amount">••••••</span></span>{% endif %}
+{%- endmacro %}

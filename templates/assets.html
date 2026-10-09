@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import "privacy.html" as privacy %}
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">Asset directory</p><h1>Assets</h1><p class="description">Manage instruments, provider symbols, and recorded prices.</p></div><div class="heading-actions"><form action="/assets/sync" method="post" hx-disabled-elt="find button"><button class="button refresh-button" type="submit" {% if refreshing %}disabled{% endif %}><span class="idle-label">↻ Refresh prices</span><span class="busy-label">Refreshing…</span></button></form><a class="button primary" href="/assets/new">+ Add asset</a></div></div>
 {% if !notice.is_empty() %}<div class="notice success" role="status">{{ notice }}</div>{% endif %}
@@ -11,7 +12,7 @@
       {% for asset in rows %}<tr data-asset-id="{{ asset.id }}">
         <td><a class="asset-link" href="/assets/{{ asset.id }}">{{ asset.symbol }}</a><span class="cell-subtitle">{{ asset.name }}</span><span class="badge asset-kind">{{ asset.kind }}</span></td>
         <td><span class="badge">{{ asset.pricing }}</span>{% if !asset.yahoo_symbol.is_empty() %}<span class="cell-subtitle">Yahoo <span class="provider-symbol">{{ asset.yahoo_symbol }}</span></span>{% endif %}{% if !asset.tradingview_symbol.is_empty() %}<span class="cell-subtitle">TradingView <span class="provider-symbol">{{ asset.tradingview_symbol }}</span></span>{% endif %}</td>
-        <td class="number">{% for price in asset.quotes %}<div class="quote-line {% if price.missing %}warning-text{% endif %}">{{ price.value }} <span class="muted">{{ price.currency }}</span><span class="cell-subtitle">{{ price.source }}{% if !price.timestamp.is_empty() %} · {{ price.timestamp }}{% endif %}</span></div>{% endfor %}</td>
+        <td class="number">{% for price in asset.quotes %}<div class="quote-line {% if price.missing %}warning-text{% endif %}">{% call privacy::amount(price.value) %} <span class="muted">{{ price.currency }}</span><span class="cell-subtitle">{{ price.source }}{% if !price.timestamp.is_empty() %} · {{ price.timestamp }}{% endif %}</span></div>{% endfor %}</td>
         <td><a class="text-link" href="/assets/{{ asset.id }}" aria-label="Edit {{ asset.symbol }}">Edit</a></td>
       </tr>{% endfor %}
       {% if rows.is_empty() %}<tr><td colspan="4" class="empty-table">No assets match this view. <a href="/assets/new">Add an asset</a> to configure it before recording transactions.</td></tr>{% endif %}

@@ -79,7 +79,8 @@ async fn gifts_save_without_quote_fields_and_render_their_implicit_zero_cost() {
     assert_eq!(fixture.app.persisted().ledger_entries.len(), 1);
     let page = html(fixture.app.get("/transactions").await, StatusCode::OK).await;
     assert!(page.contains(">Gift</span>"));
-    assert!(page.contains("0<span class=\"cell-subtitle\">Zero cost basis</span>"));
+    assert!(page.contains("<span class=\"private-value\">0</span>"));
+    assert!(page.contains("<span class=\"cell-subtitle\">Zero cost basis</span>"));
     assert!(!page.contains("Cash posted"));
     let id = fixture.app.persisted().transactions[0].id;
     let page = html(

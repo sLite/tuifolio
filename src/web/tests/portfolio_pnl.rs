@@ -77,9 +77,16 @@ fn seed_portfolios(store: &mut Store) -> anyhow::Result<Vec<PnlCase>> {
 async fn assert_portfolio_pnl(fixture: &TestApp, list: &str, case: &PnlCase) {
     let link = format!("href=\"/portfolios/{}\"", case.id);
     let row = list.split("<tr>").find(|row| row.contains(&link)).unwrap();
-    assert!(row.contains(&format!(
-        "<td class=\"number {}\">{}</td>",
-        case.tone, case.text
+    let pnl = row
+        .split(&format!("<td class=\"number {}\">", case.tone))
+        .nth(1)
+        .unwrap()
+        .split("</td>")
+        .next()
+        .unwrap();
+    assert!(pnl.contains(&format!(
+        "<span class=\"private-value\">{}</span>",
+        case.text
     )));
     let page = html(
         fixture.get(&format!("/portfolios/{}", case.id)).await,
@@ -88,7 +95,7 @@ async fn assert_portfolio_pnl(fixture: &TestApp, list: &str, case: &PnlCase) {
     .await;
     assert!(page.contains("Unrealized PnL"));
     assert!(page.contains(&format!(
-        "<strong class=\"{}\">{}</strong>",
+        "<strong class=\"{}\"><span class=\"private-amount\"><span class=\"private-value\">{}</span>",
         case.tone, case.text
     )));
     assert!(page.contains("where cost basis is available"));
@@ -104,7 +111,7 @@ async fn portfolio_list_and_detail_show_scoped_pnl_with_positive_negative_and_ze
         assert_portfolio_pnl(&fixture, &list, &case).await;
     }
     let overview = html(fixture.get("/").await, StatusCode::OK).await;
-    assert!(overview.contains("<strong class=\"positive\">150.00</strong>"));
+    assert!(overview.contains("<strong class=\"positive\"><span class=\"private-amount\"><span class=\"private-value\">150.00</span>"));
 }
 
 fn seed_crypto_portfolio(store: &mut Store) -> anyhow::Result<Id> {

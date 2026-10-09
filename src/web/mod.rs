@@ -209,6 +209,10 @@ async fn static_asset(axum::extract::Path(name): axum::extract::Path<String>) ->
             "text/javascript; charset=utf-8",
             include_bytes!("../../static/app.js"),
         ),
+        "privacy.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("../../static/privacy.js"),
+        ),
         "htmx.min.js" => (
             "text/javascript; charset=utf-8",
             include_bytes!("../../static/htmx.min.js"),

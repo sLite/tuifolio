@@ -56,9 +56,22 @@ nav { display: flex; align-self: stretch; gap: 31px; }
 nav a { position: relative; display: flex; align-items: center; color: var(--muted); font-size: 16px; }
 nav a[aria-current] { color: var(--text); }
 nav a[aria-current]::after { content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); }
-.base-form { display: flex; align-items: center; gap: 11px; margin-left: auto; }
+.header-controls { display: flex; align-items: center; gap: 17px; margin-left: auto; }
+.privacy-toggle[hidden] { display: none; }
+.privacy-toggle [data-privacy-state] { color: var(--muted); }
+.privacy-toggle[aria-pressed="true"] { border-color: var(--accent); }
+.privacy-toggle[aria-pressed="true"] [data-privacy-state] { color: var(--accent); }
+.base-form { display: flex; align-items: center; gap: 11px; }
 .base-form label { color: var(--muted); font-size: 14px; }
 .base-form select { min-height: 38px; padding: 5px 30px 5px 11px; width: 106px; }
+
+.private-mask { display: none; }
+.privacy-mode .private-value { display: none; }
+.privacy-mode .private-mask { display: inline-block; color: var(--muted); font-family: var(--numbers); font-weight: 400; letter-spacing: 0; white-space: nowrap; }
+.private-input { display: block; position: relative; margin-top: 8px; }
+.private-input input { width: 100%; margin-top: 0; }
+.privacy-mode .private-input input { visibility: hidden; }
+.privacy-mode .private-input .private-mask { position: absolute; inset: 0; display: flex; align-items: center; padding: 11px 13px; border: 1px solid #394248; border-radius: 5px; background: #13181b; }
 
 main { max-width: 1824px; margin: auto; padding: 50px 48px 77px; min-height: calc(100vh - 180px); }
 .page-heading { display: flex; justify-content: space-between; gap: 29px; align-items: center; margin-bottom: 38px; }
@@ -211,7 +224,7 @@ input[readonly] { color: var(--muted); border-style: dashed; }
 }
 @media (max-width: 1080px) {
   .header-inner { flex-wrap: wrap; gap: 0; padding-top: 19px; }
-  .base-form { margin-left: auto; }
+  .header-controls { margin-left: auto; }
   nav { width: 100%; order: 3; min-height: 62px; gap: 29px; margin-top: 10px; }
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric:nth-child(3) { border-left: 0; }
@@ -226,6 +239,8 @@ input[readonly] { color: var(--muted); border-style: dashed; }
 @media (max-width: 720px) {
   .header-inner { padding-left: 22px; padding-right: 22px; }
   .brand { font-size: 24px; }
+  .header-controls { gap: 10px; }
+  .privacy-toggle.button { padding: 6px 8px; gap: 6px; font-size: 13px; }
   .base-form { gap: 7px; }
   .base-form label { display: none; }
   .base-form select { width: 88px; }
