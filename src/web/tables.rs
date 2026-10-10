@@ -75,6 +75,7 @@ pub(super) struct Summary {
     pub net: Amount,
     pub pnl: Amount,
     pub missing: usize,
+    pub missing_pnl: usize,
     pub negative: usize,
 }
 
@@ -84,8 +85,13 @@ impl Summary {
             assets: Amount::new(Some(report.total_assets), precision),
             liabilities: Amount::new(Some(report.total_liabilities), precision),
             net: Amount::new(Some(report.net_value), precision),
-            pnl: Amount::new(Some(report.total_unrealized_pnl), precision),
-            missing: report.holdings.iter().filter(|h| h.stale_price).count(),
+            pnl: Amount::new(report.total_unrealized_pnl, precision),
+            missing: report
+                .holdings
+                .iter()
+                .filter(|h| h.missing_valuation)
+                .count(),
+            missing_pnl: report.unresolved_pnl,
             negative: report.negative_balances.len(),
         }
     }
@@ -121,7 +127,7 @@ impl HoldingView {
             value: Amount::new(holding.value, precision),
             invested: Amount::new(holding.net_invested, precision),
             pnl: Amount::new(holding.unrealized_pnl, precision),
-            missing: holding.stale_price,
+            missing: holding.missing_valuation,
             negative: holding.kind != AssetKind::Liability && holding.quantity < Decimal::ZERO,
             transactions_url: holding_url("/transactions", holding),
             add_url: holding_url("/transactions/new", holding),
@@ -173,6 +179,7 @@ pub(super) struct PortfolioView {
     pub net: Amount,
     pub pnl: Amount,
     pub missing: usize,
+    pub missing_pnl: usize,
 }
 
 impl PortfolioView {
@@ -183,8 +190,9 @@ impl PortfolioView {
             assets: Amount::new(Some(portfolio.assets), precision),
             liabilities: Amount::new(Some(portfolio.liabilities), precision),
             net: Amount::new(Some(portfolio.net_value), precision),
-            pnl: Amount::new(Some(portfolio.unrealized_pnl), precision),
+            pnl: Amount::new(portfolio.unrealized_pnl, precision),
             missing: portfolio.unresolved,
+            missing_pnl: portfolio.unresolved_pnl,
         }
     }
 }

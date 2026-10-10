@@ -140,7 +140,7 @@ fn gifts_establish_zero_cost_only_for_their_own_portfolio_and_asset() {
         assert_eq!(holding.net_invested, None);
     }
     assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
-    assert_eq!(report.total_unrealized_pnl, Decimal::from(350000));
+    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350000)));
 }
 
 #[test]
@@ -279,6 +279,6 @@ fn deleting_a_gift_removes_its_asset_and_fee_movements() {
     assert!(fixture.store.data.ledger_entries.is_empty());
     assert_eq!(
         build_report(&fixture.store.data).total_unrealized_pnl,
-        Decimal::ZERO
+        Some(Decimal::ZERO)
     );
 }

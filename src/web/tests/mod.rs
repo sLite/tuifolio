@@ -8,6 +8,7 @@ mod portfolio_pnl;
 mod portfolios;
 mod privacy;
 mod quote_visibility;
+mod report_completeness;
 mod stock_splits;
 mod transaction_details;
 mod transaction_editing;

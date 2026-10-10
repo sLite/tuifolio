@@ -77,7 +77,7 @@ impl Fixture {
         assert_eq!(holding.value, Some(Decimal::from(350000)));
         assert_eq!(holding.net_invested, Some(Decimal::ZERO));
         assert_eq!(holding.unrealized_pnl, holding.value);
-        assert_eq!(report.total_unrealized_pnl, Decimal::from(350000));
+        assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350000)));
     }
 }
 

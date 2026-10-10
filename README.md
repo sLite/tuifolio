@@ -119,6 +119,18 @@ under `tuifolio/store.json`, unless you supply `--store`.
   unchanged. Correct the USD asset type in its editor before refreshing again.
 - PnL is derived from transactions, ledger entries, and prices. It is not
   persisted as canonical accounting truth.
+- Every holding without a valuation counts as unresolved, including cash and
+  liabilities. Web and CLI reports mark their balance-sheet totals as partial
+  and explain that these holdings are excluded. The CLI `missing-prices`
+  command includes them.
+- Valuation completeness is separate from investment PnL availability. If
+  investment holdings exist but none has computable PnL, the aggregate is
+  unavailable rather than zero. A computable subtotal is marked partial when
+  other investment holdings lack a valuation or recorded cost basis. Cash and
+  liabilities do not require acquisition basis for this investment metric.
+  These are reporting checks, not stored fields or a datastore migration.
+  Complete valuation does not certify quote freshness or correct cost-basis
+  accounting.
 
 Manual buys and sells require an asset quantity, an existing quote asset, and a
 total quote amount. The quote amount supplies cost basis or proceeds for PnL.

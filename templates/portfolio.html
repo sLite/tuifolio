@@ -4,11 +4,12 @@
 <a class="breadcrumb" href="/portfolios">← All portfolios</a>
 <div class="page-heading"><div><p class="eyebrow">Portfolio</p><h1>{{ portfolio.name }}</h1><p class="description">Balances and valuations in {{ common.base }}.</p></div><div class="heading-actions"><a class="button" href="/transactions?portfolio={{ portfolio.id }}">Transactions</a><a class="button primary" href="/transactions/new?portfolio={{ portfolio.id }}">+ Add transaction</a></div></div>
 <section class="metrics" aria-label="Portfolio totals">
-  <div class="metric net-worth"><span class="metric-label">Net worth</span><strong>{% call privacy::amount(portfolio.net.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
-  <div class="metric"><span class="metric-label">Assets</span><strong>{% call privacy::amount(portfolio.assets.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
-  <div class="metric"><span class="metric-label">Liabilities</span><strong>{% call privacy::amount(portfolio.liabilities.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
-  <div class="metric"><span class="metric-label">Unrealized PnL</span><strong class="{{ portfolio.pnl.tone }}">{% call privacy::amount(portfolio.pnl.text) %}</strong><span class="metric-note">{{ common.base }} · where cost basis is available</span></div>
+  <div class="metric net-worth"><span class="metric-label">Net worth{% if portfolio.missing > 0 %} · Partial{% endif %}</span><strong>{% call privacy::amount(portfolio.net.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Assets{% if portfolio.missing > 0 %} · Partial{% endif %}</span><strong>{% call privacy::amount(portfolio.assets.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Liabilities{% if portfolio.missing > 0 %} · Partial{% endif %}</span><strong>{% call privacy::amount(portfolio.liabilities.text) %}</strong><span class="metric-note">{{ common.base }}</span></div>
+  <div class="metric"><span class="metric-label">Unrealized PnL</span><strong class="{{ portfolio.pnl.tone }}">{% call privacy::amount(portfolio.pnl.text) %}</strong><span class="metric-note">{{ common.base }} · where cost basis is available{% if portfolio.missing_pnl > 0 && portfolio.pnl.text != "Unavailable" %} · Partial{% endif %}</span></div>
 </section>
-{% if portfolio.missing > 0 %}<div class="notice warning"><span>{{ portfolio.missing }} holdings have no valuation. Totals exclude these holdings.</span><a href="/assets">Review assets →</a></div>{% endif %}
+{% if portfolio.missing > 0 %}<div class="notice warning"><span>{{ portfolio.missing }} holdings have no valuation. Partial totals exclude these holdings, including unvalued cash and liabilities.</span><a href="/assets">Review assets →</a></div>{% endif %}
+{% if portfolio.missing_pnl > 0 %}<div class="notice warning">{{ portfolio.missing_pnl }} investment holdings have unavailable PnL because valuation or cost basis is missing. {% if portfolio.pnl.text == "Unavailable" %}No investment PnL can be calculated.{% else %}Partial PnL excludes these holdings.{% endif %}</div>{% endif %}
 <section class="panel"><div class="panel-heading"><h2>Holdings <span class="count">{{ holdings.len() }}</span></h2></div>{% include "holdings.html" %}</section>
 {% endblock %}

@@ -102,7 +102,7 @@ fn manual_prices_enable_commodity_valuation() {
     let portfolio = create_portfolio(&mut store, "Metal");
     let gold = create_asset(&mut store, "GOLD", "Gold", AssetKind::Commodity);
     post(&mut store, portfolio, gold, TransactionKind::Deposit, 2);
-    assert!(build_report(&store.data).holdings[0].stale_price);
+    assert!(build_report(&store.data).holdings[0].missing_valuation);
     add_manual_price(&mut store, "GOLD", Decimal::from(3000), "EUR").unwrap();
     assert_eq!(build_report(&store.data).net_value, Decimal::from(6000));
 }
@@ -210,9 +210,9 @@ fn portfolio_pnl_is_scoped_to_each_portfolio_and_rolls_up_to_the_overview() {
             .iter()
             .find(|portfolio| portfolio.id == id)
             .unwrap();
-        assert_eq!(portfolio.unrealized_pnl, Decimal::from(expected));
+        assert_eq!(portfolio.unrealized_pnl, Some(Decimal::from(expected)));
     }
-    assert_eq!(report.total_unrealized_pnl, Decimal::from(150));
+    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(150)));
 }
 
 #[test]
@@ -235,8 +235,13 @@ fn portfolio_pnl_excludes_holdings_without_a_recorded_cost_basis() {
     );
     let report = build_report(&store.data);
     assert_eq!(report.portfolios[0].assets, Decimal::from(1400000));
-    assert_eq!(report.portfolios[0].unrealized_pnl, Decimal::from(80000));
-    assert_eq!(report.total_unrealized_pnl, Decimal::from(80000));
+    assert_eq!(
+        report.portfolios[0].unrealized_pnl,
+        Some(Decimal::from(80000))
+    );
+    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(80000)));
+    assert_eq!(report.portfolios[0].unresolved_pnl, 1);
+    assert_eq!(report.unresolved_pnl, 1);
 }
 
 #[test]
@@ -250,7 +255,9 @@ fn portfolio_pnl_excludes_unvalued_holdings_with_a_recorded_cost() {
     input.quote_amount = Some(Decimal::from(100));
     add_manual_transaction(&mut store, input).unwrap();
     let report = build_report(&store.data);
-    assert_eq!(report.portfolios[0].unrealized_pnl, Decimal::ZERO);
+    assert_eq!(report.portfolios[0].unrealized_pnl, None);
     assert_eq!(report.portfolios[0].unresolved, 1);
-    assert_eq!(report.total_unrealized_pnl, Decimal::ZERO);
+    assert_eq!(report.portfolios[0].unresolved_pnl, 1);
+    assert_eq!(report.total_unrealized_pnl, None);
+    assert_eq!(report.unresolved_pnl, 1);
 }

@@ -86,27 +86,65 @@ fn execute_command(mut store: Store, command: Command) -> anyhow::Result<()> {
 fn summary_command(store: &Store) {
     let report = build_report(&store.data);
     println!("Base: {}", report.base_currency);
-    println!("Assets: {}", money(report.total_assets));
-    println!("Liabilities: {}", money(report.total_liabilities));
-    println!("Net worth: {}", money(report.net_value));
-    println!("Unrealized PnL: {}", money(report.total_unrealized_pnl));
+    let missing = report
+        .holdings
+        .iter()
+        .filter(|holding| holding.missing_valuation)
+        .count();
+    let partial = if missing > 0 { " (partial)" } else { "" };
+    println!("Assets{partial}: {}", money(report.total_assets));
+    println!("Liabilities{partial}: {}", money(report.total_liabilities));
+    println!("Net worth{partial}: {}", money(report.net_value));
+    println!(
+        "Unrealized PnL: {}{}",
+        report
+            .total_unrealized_pnl
+            .map(money)
+            .unwrap_or_else(|| "Unavailable".into()),
+        if report.unresolved_pnl > 0 && report.total_unrealized_pnl.is_some() {
+            " (partial)"
+        } else {
+            ""
+        }
+    );
+    if missing > 0 {
+        println!(
+            "Warning: {missing} holdings have no valuation. Partial totals exclude these holdings, including unvalued cash and liabilities."
+        );
+    }
+    if report.unresolved_pnl > 0 {
+        println!(
+            "Warning: {} investment holdings have unavailable PnL because valuation or cost basis is missing.",
+            report.unresolved_pnl
+        );
+    }
     println!("Holdings: {}", report.holdings.len());
     println!("Negative balances: {}", report.negative_balances.len());
     for portfolio in report.portfolios {
         println!(
-            "{}: assets={} liabilities={} net={} missing={}",
+            "{}{}: assets={} liabilities={} net={} missing={} pnl_missing={}",
             portfolio.name,
+            if portfolio.unresolved > 0 {
+                " (partial)"
+            } else {
+                ""
+            },
             money(portfolio.assets),
             money(portfolio.liabilities),
             money(portfolio.net_value),
-            portfolio.unresolved
+            portfolio.unresolved,
+            portfolio.unresolved_pnl
         );
     }
 }
 
 fn missing_prices_command(store: &Store) {
     let report = build_report(&store.data);
-    for holding in report.holdings.iter().filter(|holding| holding.stale_price) {
+    for holding in report
+        .holdings
+        .iter()
+        .filter(|holding| holding.missing_valuation)
+    {
         println!(
             "{} {} ({:?})",
             holding.portfolio, holding.symbol, holding.kind

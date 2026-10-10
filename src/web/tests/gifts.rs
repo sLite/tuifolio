@@ -60,7 +60,7 @@ impl Fixture {
             .unwrap();
         assert_eq!(holding.net_invested, Some(dec!(0)));
         assert_eq!(holding.unrealized_pnl, Some(dec!(350000)));
-        assert_eq!(report.portfolios[0].unrealized_pnl, dec!(350000));
+        assert_eq!(report.portfolios[0].unrealized_pnl, Some(dec!(350000)));
     }
 }
 

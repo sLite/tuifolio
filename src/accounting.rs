@@ -17,7 +17,7 @@ pub struct HoldingRow {
     pub value: Option<Decimal>,
     pub net_invested: Option<Decimal>,
     pub unrealized_pnl: Option<Decimal>,
-    pub stale_price: bool,
+    pub missing_valuation: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -27,8 +27,9 @@ pub struct PortfolioRow {
     pub assets: Decimal,
     pub liabilities: Decimal,
     pub net_value: Decimal,
-    pub unrealized_pnl: Decimal,
+    pub unrealized_pnl: Option<Decimal>,
     pub unresolved: usize,
+    pub unresolved_pnl: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +38,8 @@ pub struct Report {
     pub total_assets: Decimal,
     pub total_liabilities: Decimal,
     pub net_value: Decimal,
-    pub total_unrealized_pnl: Decimal,
+    pub total_unrealized_pnl: Option<Decimal>,
+    pub unresolved_pnl: usize,
     pub portfolios: Vec<PortfolioRow>,
     pub holdings: Vec<HoldingRow>,
     pub negative_balances: Vec<HoldingRow>,
@@ -71,7 +73,7 @@ pub fn build_report(data: &StoreData) -> Report {
             value,
             net_invested,
             unrealized_pnl,
-            stale_price: value.is_none() && !is_cash_like(asset, &base),
+            missing_valuation: value.is_none(),
         });
     }
 
@@ -80,7 +82,7 @@ pub fn build_report(data: &StoreData) -> Report {
     let total_assets = portfolios.iter().map(|p| p.assets).sum();
     let total_liabilities = portfolios.iter().map(|p| p.liabilities).sum();
     let net_value = total_assets - total_liabilities;
-    let total_unrealized_pnl = portfolios.iter().map(|p| p.unrealized_pnl).sum();
+    let (total_unrealized_pnl, unresolved_pnl) = pnl_total(holdings.iter());
     let negative_balances = holdings
         .iter()
         .filter(|h| h.kind != AssetKind::Liability && h.quantity < Decimal::ZERO)
@@ -93,6 +95,7 @@ pub fn build_report(data: &StoreData) -> Report {
         total_liabilities,
         net_value,
         total_unrealized_pnl,
+        unresolved_pnl,
         portfolios,
         holdings,
         negative_balances,
@@ -334,17 +337,16 @@ fn portfolio_row(portfolio: &Portfolio, holdings: &[HoldingRow]) -> PortfolioRow
         .filter(|holding| holding.kind == AssetKind::Liability)
         .filter_map(|holding| holding.value)
         .sum();
+    let (unrealized_pnl, unresolved_pnl) = pnl_total(rows.clone());
     PortfolioRow {
         id: portfolio.id,
         name: portfolio.name.clone(),
         assets,
         liabilities,
         net_value: assets - liabilities,
-        unrealized_pnl: rows
-            .clone()
-            .filter_map(|holding| holding.unrealized_pnl)
-            .sum(),
-        unresolved: rows.filter(|holding| holding.stale_price).count(),
+        unrealized_pnl,
+        unresolved: rows.filter(|holding| holding.missing_valuation).count(),
+        unresolved_pnl,
     }
 }
 
@@ -356,8 +358,20 @@ fn portfolio_name(data: &StoreData, id: Id) -> String {
         .unwrap_or_default()
 }
 
-fn is_cash_like(asset: &Asset, base: &str) -> bool {
-    asset.kind == AssetKind::Fiat || asset.kind == AssetKind::Liability || asset.symbol == base
+fn pnl_total<'a>(holdings: impl Iterator<Item = &'a HoldingRow>) -> (Option<Decimal>, usize) {
+    let mut total = Decimal::ZERO;
+    let mut known = false;
+    let mut unresolved = 0;
+    for holding in holdings {
+        if let Some(pnl) = holding.unrealized_pnl {
+            total += pnl;
+            known = true;
+        } else if !matches!(holding.kind, AssetKind::Fiat | AssetKind::Liability) {
+            // Cash and debt do not require acquisition basis for this investment metric.
+            unresolved += 1;
+        }
+    }
+    ((known || unresolved == 0).then_some(total), unresolved)
 }
 
 pub fn now() -> DateTime<Utc> {

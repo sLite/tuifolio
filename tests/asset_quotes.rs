@@ -134,7 +134,7 @@ fn property_costs_and_unquoted_valuation_increases_produce_the_expected_pnl() {
     assert_eq!(holding.unrealized_pnl, Some(Decimal::from(80000)));
     assert_eq!(
         build_report(&fixture.store.data).total_unrealized_pnl,
-        Decimal::from(80000)
+        Some(Decimal::from(80000))
     );
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
 }
