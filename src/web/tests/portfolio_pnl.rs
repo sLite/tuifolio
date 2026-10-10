@@ -11,6 +11,13 @@ use crate::{
     transactions::{ManualTransactionInput, add_manual_transaction},
 };
 
+#[tokio::test]
+async fn serves_shared_spacing_for_adjacent_report_panels() {
+    let fixture = TestApp::new(false);
+    let css = html(fixture.get("/static/style.css").await, StatusCode::OK).await;
+    assert!(css.contains("main > .panel + .panel { margin-top: 29px; }"));
+}
+
 struct PnlCase {
     id: Id,
     text: &'static str,
