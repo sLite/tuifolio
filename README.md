@@ -118,17 +118,25 @@ still have limits; they do not infer historical transfers or staking income.
 
 ### Staking rewards
 
-Use **Staking reward** for a Crypto asset received as a staking reward. Enter its
-quantity and UTC receipt time, without a purchase payment. Its market value at
-that time establishes acquisition basis and separate staking income. Later price
-changes appear in unrealized or realized investment PnL, so receipt income is
-not counted twice. Income stays in reports after the position closes.
+Use **Staking reward** only for genuine staking of a Crypto asset. Enter its
+quantity and UTC receipt time without a purchase payment. Reward units have
+**zero acquisition cost**, consistent with Austrian genuine-staking treatment
+under § 27a Abs. 4 Z 5 and § 27b Abs. 2 EStG. No receipt-time market value is
+recognized as separate income or added to basis. Do not classify lending or
+other non-staking Earn payments as staking rewards.
 
-The overview, portfolio detail and CLI summary show staking income separately.
-Missing historical asset prices or conversions leave income and basis unavailable;
-later prices cannot fill that gap. Fees increase acquisition cost or reduce
-received units, and fees paid in another investment asset dispose of its basis.
-These figures are for portfolio performance, not tax reporting.
+Reward units join the position's weighted-average pool without increasing its
+acquisition cost. Their current value contributes to unrealized PnL; a later
+disposal uses the pooled basis when calculating realized PnL. Historical reward
+prices or FX are not needed to establish zero cost, but current valuations still
+require usable prices and conversions. Uncosted external deposits remain unknown.
+
+Fees retain the existing portfolio-performance policy. Fees withheld in reward
+units reduce the received quantity while retaining zero cost. Separate fees add
+their recorded or historically converted cost; fees paid in another investment
+asset also dispose of its basis. This does not make the app an Austrian tax
+report: crypto-to-crypto realization, wallet-level tax pooling, fees and other
+tax-specific rules are not comprehensively implemented.
 
 Existing deposits are never reclassified automatically. Supported quote-asset
 metadata without a payment remains ignored and can survive edits of reclassified

@@ -20,7 +20,6 @@ pub struct HoldingRow {
     pub net_invested: Option<Decimal>,
     pub remaining_cost_basis: Option<Decimal>,
     pub realized_pnl: Option<Decimal>,
-    pub staking_income: Option<Decimal>,
     pub unrealized_pnl: Option<Decimal>,
     pub missing_valuation: bool,
 }
@@ -37,8 +36,6 @@ pub struct PortfolioRow {
     pub unresolved_pnl: usize,
     pub realized_pnl: Option<Decimal>,
     pub unresolved_realized_pnl: usize,
-    pub staking_income: Option<Decimal>,
-    pub unresolved_staking_income: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -51,9 +48,6 @@ pub struct Report {
     pub total_realized_pnl: Option<Decimal>,
     pub unresolved_realized_pnl: usize,
     pub realized_returns: Vec<RealizedReturn>,
-    pub total_staking_income: Option<Decimal>,
-    pub unresolved_staking_income: usize,
-    pub staking_returns: Vec<StakingIncome>,
     pub unresolved_pnl: usize,
     pub portfolios: Vec<PortfolioRow>,
     pub holdings: Vec<HoldingRow>,
@@ -67,15 +61,6 @@ pub struct RealizedReturn {
     pub portfolio: String,
     pub symbol: String,
     pub pnl: Option<Decimal>,
-}
-
-#[derive(Debug, Clone)]
-pub struct StakingIncome {
-    pub portfolio_id: Id,
-    pub asset_id: Id,
-    pub portfolio: String,
-    pub symbol: String,
-    pub income: Option<Decimal>,
 }
 
 pub fn build_report(data: &StoreData) -> Report {
@@ -96,20 +81,6 @@ pub fn build_report(data: &StoreData) -> Report {
             pnl: p.realized,
         })
         .collect();
-
-    let staking_returns: Vec<_> = positions
-        .iter()
-        .filter(|(_, p)| p.rewarded)
-        .map(|(&(portfolio_id, asset_id), p)| StakingIncome {
-            portfolio_id,
-            asset_id,
-            portfolio: portfolio_name(data, portfolio_id),
-            symbol: asset_map[&asset_id].symbol.clone(),
-            income: p.staking_income,
-        })
-        .collect();
-    let (total_staking_income, unresolved_staking_income) =
-        realized_total(staking_returns.iter().map(|r| r.income));
 
     for ((portfolio_id, asset_id), quantity) in balances {
         if quantity.is_zero() {
@@ -142,10 +113,6 @@ pub fn build_report(data: &StoreData) -> Report {
             net_invested,
             remaining_cost_basis,
             realized_pnl,
-            staking_income: positions
-                .get(&(portfolio_id, asset_id))
-                .filter(|p| p.rewarded)
-                .and_then(|p| p.staking_income),
             unrealized_pnl,
             missing_valuation: value.is_none(),
         });
@@ -154,15 +121,6 @@ pub fn build_report(data: &StoreData) -> Report {
     holdings.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.symbol.cmp(&b.symbol)));
     let mut portfolios = portfolio_rows(data, &holdings);
     for portfolio in &mut portfolios {
-        (
-            portfolio.staking_income,
-            portfolio.unresolved_staking_income,
-        ) = realized_total(
-            staking_returns
-                .iter()
-                .filter(|r| r.portfolio_id == portfolio.id)
-                .map(|r| r.income),
-        );
         (portfolio.realized_pnl, portfolio.unresolved_realized_pnl) = realized_total(
             realized_returns
                 .iter()
@@ -191,9 +149,6 @@ pub fn build_report(data: &StoreData) -> Report {
         total_realized_pnl,
         unresolved_realized_pnl,
         realized_returns,
-        total_staking_income,
-        unresolved_staking_income,
-        staking_returns,
         unresolved_pnl,
         portfolios,
         holdings,
@@ -521,8 +476,6 @@ fn portfolio_row(portfolio: &Portfolio, holdings: &[HoldingRow]) -> PortfolioRow
         unresolved_pnl,
         realized_pnl: Some(Decimal::ZERO),
         unresolved_realized_pnl: 0,
-        staking_income: Some(Decimal::ZERO),
-        unresolved_staking_income: 0,
     }
 }
 

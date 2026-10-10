@@ -3,7 +3,7 @@ use askama::Template;
 use super::{
     forms::TransactionForm,
     query::{AssetScope, PAGE_SIZE, PageQuery},
-    tables::{HoldingView, PortfolioView, RealizedView, StakingView, Summary, TransactionView},
+    tables::{HoldingView, PortfolioView, RealizedView, Summary, TransactionView},
 };
 use crate::model::{Id, StoreData, Transaction, TransactionKind};
 
@@ -163,7 +163,6 @@ fn transaction_kind_choices(selected: &str) -> Vec<TransactionKindChoice> {
 pub(super) struct OverviewPage {
     pub common: Common,
     pub summary: Summary,
-    pub staking: Vec<StakingView>,
     pub realized: Vec<RealizedView>,
     pub holdings: Vec<HoldingView>,
     pub portfolios: Vec<Choice>,
@@ -183,7 +182,6 @@ pub(super) struct PortfoliosPage {
 pub(super) struct PortfolioPage {
     pub common: Common,
     pub portfolio: PortfolioView,
-    pub staking: Vec<StakingView>,
     pub realized: Vec<RealizedView>,
     pub holdings: Vec<HoldingView>,
 }

@@ -88,29 +88,28 @@ impl Fixture {
 }
 
 #[test]
-fn reward_basis_and_income_use_receipt_time_in_every_reporting_currency() {
+fn reward_zero_basis_and_full_value_pnl_work_in_every_reporting_currency() {
     let mut f = Fixture::new();
     f.reward();
     f.mark();
-    for (base, basis, pnl) in [
-        ("EUR", dec!(20), dec!(10)),
-        ("USD", dec!(40), dec!(20)),
-        ("BTC", dec!(0.4), dec!(0.2)),
-        ("ETH", dec!(4), dec!(2)),
+    for (base, value) in [
+        ("EUR", dec!(30)),
+        ("USD", dec!(60)),
+        ("BTC", dec!(0.6)),
+        ("ETH", dec!(6)),
     ] {
         f.store.data.config.selected_base_currency = base.into();
         let r = build_report(&f.store.data);
         let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
-        assert_eq!(h.remaining_cost_basis, Some(basis));
-        assert_eq!(h.unrealized_pnl, Some(pnl));
-        assert_eq!(r.total_staking_income, Some(basis));
-        assert_eq!(h.net_invested, None);
-        assert_eq!(r.unresolved_staking_income, 0);
+        assert_eq!(h.remaining_cost_basis, Some(dec!(0)));
+        assert_eq!(h.unrealized_pnl, Some(value));
+        assert_eq!(h.net_invested, Some(dec!(0)));
+        assert_eq!(r.unresolved_pnl, 0);
     }
 }
 
 #[test]
-fn rewards_join_paid_weighted_average_basis_without_becoming_unknown_deposits() {
+fn rewards_add_units_without_increasing_paid_weighted_average_basis() {
     let mut f = Fixture::new();
     let mut buy = f.input(TransactionKind::Buy, dec!(2));
     buy.timestamp = "2020-06-01T12:00:00Z".parse().unwrap();
@@ -122,13 +121,23 @@ fn rewards_join_paid_weighted_average_basis_without_becoming_unknown_deposits() 
     let r = build_report(&f.store.data);
     let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
     assert_eq!(h.quantity, dec!(4));
-    assert_eq!(h.remaining_cost_basis, Some(dec!(30)));
-    assert_eq!(h.unrealized_pnl, Some(dec!(30)));
-    assert_eq!(r.total_staking_income, Some(dec!(20)));
+    assert_eq!(h.remaining_cost_basis, Some(dec!(10)));
+    assert_eq!(h.unrealized_pnl, Some(dec!(50)));
+    assert_eq!(h.net_invested, Some(dec!(10)));
+    let mut sell = f.input(TransactionKind::Sell, dec!(1));
+    sell.timestamp = "2020-06-04T00:00:00Z".parse().unwrap();
+    sell.quote_asset_id = Some(f.eur);
+    sell.quote_amount = Some(dec!(10));
+    add_manual_transaction(&mut f.store, sell).unwrap();
+    let r = build_report(&f.store.data);
+    let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
+    assert_eq!(h.remaining_cost_basis, Some(dec!(7.5)));
+    assert_eq!(r.total_realized_pnl, Some(dec!(7.5)));
+    assert_eq!(h.unrealized_pnl, Some(dec!(37.5)));
 }
 
 #[test]
-fn closed_reward_positions_retain_income_and_separate_realized_price_gain() {
+fn closed_reward_position_realizes_full_sale_proceeds_without_receipt_income() {
     let mut f = Fixture::new();
     f.reward();
     let mut sell = f.input(TransactionKind::Sell, dec!(2));
@@ -138,34 +147,38 @@ fn closed_reward_positions_retain_income_and_separate_realized_price_gain() {
     add_manual_transaction(&mut f.store, sell).unwrap();
     let r = build_report(&f.store.data);
     assert!(!r.holdings.iter().any(|h| h.asset_id == f.sol));
-    assert_eq!(r.total_staking_income, Some(dec!(20)));
-    assert_eq!(r.total_realized_pnl, Some(dec!(20)));
-    assert_eq!(r.staking_returns.len(), 1);
+    assert_eq!(r.total_realized_pnl, Some(dec!(40)));
+    assert_eq!(r.realized_returns.len(), 1);
 }
 
 #[test]
-fn missing_receipt_prices_remain_unknown_despite_later_quotes() {
+fn missing_receipt_quotes_do_not_make_zero_basis_unknown() {
     let mut f = Fixture::new();
     f.store.data.prices.retain(|p| p.asset_id != f.sol);
     f.reward();
+    let r = build_report(&f.store.data);
+    let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
+    assert_eq!(h.remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(h.net_invested, Some(dec!(0)));
+    assert_eq!(h.value, None);
+    assert_eq!(h.unrealized_pnl, None);
     f.mark();
     let r = build_report(&f.store.data);
     let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
-    assert_eq!(h.remaining_cost_basis, None);
-    assert_eq!(r.total_staking_income, None);
-    assert_eq!(r.unresolved_staking_income, 1);
-    assert_eq!(h.unrealized_pnl, None);
+    assert_eq!(h.remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(h.unrealized_pnl, Some(dec!(30)));
 }
 
 #[test]
-fn missing_receipt_fx_does_not_borrow_current_rates() {
+fn receipt_needs_no_fx_but_current_market_value_still_does() {
     let mut f = Fixture::new();
-    f.store
-        .data
-        .prices
-        .retain(|p| p.asset_id != f.eur && p.currency != "EUR");
+    f.store.data.prices.clear();
     f.reward();
     let usd = f.store.asset_by_symbol("USD").unwrap().id;
+    f.mark();
+    let r = build_report(&f.store.data);
+    assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(r.holdings[0].unrealized_pnl, None);
     add_manual_price_for_asset_at(
         &mut f.store,
         usd,
@@ -175,12 +188,12 @@ fn missing_receipt_fx_does_not_borrow_current_rates() {
     )
     .unwrap();
     let r = build_report(&f.store.data);
-    assert_eq!(r.total_staking_income, None);
-    assert_eq!(r.unresolved_staking_income, 1);
+    assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(30)));
 }
 
 #[test]
-fn reward_acquisition_fees_are_not_charged_twice() {
+fn same_asset_fees_reduce_zero_cost_units_and_separate_fees_keep_existing_cost_policy() {
     for same_asset in [false, true] {
         let mut f = Fixture::new();
         let mut input = f.input(TransactionKind::StakingReward, dec!(2));
@@ -189,17 +202,18 @@ fn reward_acquisition_fees_are_not_charged_twice() {
         add_manual_transaction(&mut f.store, input).unwrap();
         let r = build_report(&f.store.data);
         let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
-        assert_eq!(r.total_staking_income, Some(dec!(20)));
+        assert_eq!(h.quantity, if same_asset { dec!(1.8) } else { dec!(2) });
         assert_eq!(
             h.remaining_cost_basis,
-            Some(if same_asset { dec!(20) } else { dec!(22) })
+            Some(if same_asset { dec!(0) } else { dec!(2) })
         );
-        assert_eq!(h.unrealized_pnl, Some(dec!(-2)));
+        assert_eq!(h.unrealized_pnl, Some(dec!(18)));
+        assert_eq!(r.total_realized_pnl, Some(dec!(0)));
     }
 }
 
 #[test]
-fn third_investment_asset_fee_has_its_own_basis_disposal() {
+fn third_investment_asset_fee_retains_its_own_basis_disposal() {
     let mut f = Fixture::new();
     let mut buy = f.input(TransactionKind::Buy, dec!(1));
     buy.base_asset_id = f.eth;
@@ -218,10 +232,9 @@ fn third_investment_asset_fee_has_its_own_basis_disposal() {
             .find(|h| h.asset_id == f.sol)
             .unwrap()
             .remaining_cost_basis,
-        Some(dec!(20.5))
+        Some(dec!(0.5))
     );
     assert_eq!(r.total_realized_pnl, Some(dec!(0.3)));
-    assert_eq!(r.total_staking_income, Some(dec!(20)));
 }
 
 #[test]
@@ -247,7 +260,7 @@ fn noncrypto_rewards_payments_and_fully_consuming_fees_are_rejected_atomically()
 }
 
 #[test]
-fn changing_only_the_kind_preserves_quantity_postings_and_ignored_quote_metadata() {
+fn changing_only_kind_preserves_quantity_postings_and_ignored_quote_metadata() {
     let mut f = Fixture::new();
     let mut input = f.input(TransactionKind::Deposit, dec!(2));
     let id = add_manual_transaction(&mut f.store, input.clone())
@@ -263,13 +276,13 @@ fn changing_only_the_kind_preserves_quantity_postings_and_ignored_quote_metadata
     );
     assert_eq!(f.store.data.transactions[0].quote_asset_id, Some(f.eur));
     assert_eq!(
-        build_report(&f.store.data).total_staking_income,
-        Some(dec!(20))
+        build_report(&f.store.data).holdings[0].remaining_cost_basis,
+        Some(dec!(0))
     );
 }
 
 #[test]
-fn saved_reward_reopens_without_rewriting_metadata_or_income() {
+fn saved_reward_reopens_without_rewriting_metadata_or_zero_basis() {
     let mut f = Fixture::new();
     let id = f.reward();
     f.store
@@ -286,13 +299,13 @@ fn saved_reward_reopens_without_rewriting_metadata_or_income() {
     let reopened = Store::open(Some(path)).unwrap();
     assert_eq!(serde_json::to_value(&reopened.data).unwrap(), expected);
     assert_eq!(
-        build_report(&reopened.data).total_staking_income,
-        Some(dec!(20))
+        build_report(&reopened.data).holdings[0].remaining_cost_basis,
+        Some(dec!(0))
     );
 }
 
 #[test]
-fn successive_receipts_use_their_own_prices_without_repricing_previous_income() {
+fn successive_rewards_ignore_changes_in_receipt_market_value() {
     let mut f = Fixture::new();
     f.reward();
     f.mark();
@@ -300,25 +313,23 @@ fn successive_receipts_use_their_own_prices_without_repricing_previous_income() 
     next.timestamp = "2020-06-04T00:00:00Z".parse().unwrap();
     add_manual_transaction(&mut f.store, next).unwrap();
     let r = build_report(&f.store.data);
-    assert_eq!(r.total_staking_income, Some(dec!(50)));
-    assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(50)));
-    assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(10)));
+    assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(60)));
 }
 
 #[test]
-fn an_uncosted_external_deposit_still_keeps_basis_incomplete_but_not_known_reward_income() {
+fn zero_cost_rewards_do_not_resolve_an_uncosted_external_deposit() {
     let mut f = Fixture::new();
     let input = f.input(TransactionKind::Deposit, dec!(1));
     add_manual_transaction(&mut f.store, input).unwrap();
     f.reward();
     let r = build_report(&f.store.data);
-    assert_eq!(r.total_staking_income, Some(dec!(20)));
     assert_eq!(r.holdings[0].remaining_cost_basis, None);
     assert_eq!(r.unresolved_pnl, 1);
 }
 
 #[test]
-fn explicit_zero_market_value_means_zero_reward_income_not_missing_basis() {
+fn explicitly_worthless_rewards_have_known_zero_basis_and_pnl() {
     let mut f = Fixture::new();
     add_manual_price_for_asset_at(
         &mut f.store,
@@ -330,7 +341,7 @@ fn explicit_zero_market_value_means_zero_reward_income_not_missing_basis() {
     .unwrap();
     f.reward();
     let r = build_report(&f.store.data);
-    assert_eq!(r.total_staking_income, Some(dec!(0)));
-    assert_eq!(r.unresolved_staking_income, 0);
     assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(0)));
+    assert_eq!(r.unresolved_pnl, 0);
 }

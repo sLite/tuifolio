@@ -18,10 +18,4 @@
 {% include "realized_returns.html" %}
 </section>
 {% endif %}
-{% if !staking.is_empty() %}
-<section class="panel"><div class="panel-heading"><h2>Staking income</h2><span class="{{ portfolio.staking_income.tone }}">{% call privacy::amount(portfolio.staking_income.text) %} {{ common.base }}{% if portfolio.missing_staking_income > 0 && portfolio.staking_income.text != "Unavailable" %} · Partial{% endif %}</span></div>
-{% if portfolio.missing_staking_income > 0 %}<div class="notice warning">{{ portfolio.missing_staking_income }} staking positions have unavailable income because historical prices or conversions are missing.</div>{% endif %}
-{% include "staking_income.html" %}
-</section>
-{% endif %}
 {% endblock %}

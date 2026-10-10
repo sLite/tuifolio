@@ -40,7 +40,7 @@ pub enum TransactionKind {
 
 impl TransactionKind {
     pub fn has_implicit_zero_cost_basis(self) -> bool {
-        self == Self::Gift
+        matches!(self, Self::Gift | Self::StakingReward)
     }
 
     pub fn supports_quote(self) -> bool {

@@ -78,8 +78,6 @@ pub(super) struct Summary {
     pub missing_pnl: usize,
     pub realized: Amount,
     pub missing_realized: usize,
-    pub staking_income: Amount,
-    pub missing_staking_income: usize,
     pub negative: usize,
 }
 
@@ -98,8 +96,6 @@ impl Summary {
             missing_pnl: report.unresolved_pnl,
             realized: Amount::new(report.total_realized_pnl, precision),
             missing_realized: report.unresolved_realized_pnl,
-            staking_income: Amount::new(report.total_staking_income, precision),
-            missing_staking_income: report.unresolved_staking_income,
             negative: report.negative_balances.len(),
         }
     }
@@ -192,8 +188,6 @@ pub(super) struct PortfolioView {
     pub missing_pnl: usize,
     pub realized: Amount,
     pub missing_realized: usize,
-    pub staking_income: Amount,
-    pub missing_staking_income: usize,
 }
 
 impl PortfolioView {
@@ -209,8 +203,6 @@ impl PortfolioView {
             missing_pnl: portfolio.unresolved_pnl,
             realized: Amount::new(portfolio.realized_pnl, precision),
             missing_realized: portfolio.unresolved_realized_pnl,
-            staking_income: Amount::new(portfolio.staking_income, precision),
-            missing_staking_income: portfolio.unresolved_staking_income,
         }
     }
 }
@@ -234,25 +226,6 @@ pub(super) fn realized(
             portfolio: r.portfolio.clone(),
             symbol: r.symbol.clone(),
             pnl: Amount::new(r.pnl, precision),
-        })
-        .collect()
-}
-
-pub(super) struct StakingView {
-    pub portfolio: String,
-    pub symbol: String,
-    pub income: Amount,
-}
-
-pub(super) fn staking(report: &Report, portfolio: Option<Id>, precision: u32) -> Vec<StakingView> {
-    report
-        .staking_returns
-        .iter()
-        .filter(|r| portfolio.is_none_or(|id| r.portfolio_id == id))
-        .map(|r| StakingView {
-            portfolio: r.portfolio.clone(),
-            symbol: r.symbol.clone(),
-            income: Amount::new(r.income, precision),
         })
         .collect()
 }
@@ -320,9 +293,7 @@ fn portfolio_name(data: &StoreData, id: Id) -> String {
 }
 
 fn cash_effect(transaction: &Transaction) -> &'static str {
-    if transaction.kind == crate::model::TransactionKind::StakingReward {
-        "Market-value reward basis"
-    } else if transaction.kind.has_implicit_zero_cost_basis() {
+    if transaction.kind.has_implicit_zero_cost_basis() {
         "Zero cost basis"
     } else if !transaction.kind.supports_quote() || transaction.quote_amount.is_none() {
         ""

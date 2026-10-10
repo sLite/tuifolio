@@ -150,34 +150,6 @@ fn summary_command(store: &Store) {
             row.pnl.map(money).unwrap_or_else(|| "Unavailable".into())
         );
     }
-    println!(
-        "Staking income: {}{}",
-        report
-            .total_staking_income
-            .map(money)
-            .unwrap_or_else(|| "Unavailable".into()),
-        if report.unresolved_staking_income > 0 && report.total_staking_income.is_some() {
-            " (partial)"
-        } else {
-            ""
-        }
-    );
-    if report.unresolved_staking_income > 0 {
-        println!(
-            "Warning: {} staking positions lack historical prices or conversions.",
-            report.unresolved_staking_income
-        );
-    }
-    for row in &report.staking_returns {
-        println!(
-            "Staking {} {}: {}",
-            row.portfolio,
-            row.symbol,
-            row.income
-                .map(money)
-                .unwrap_or_else(|| "Unavailable".into())
-        );
-    }
     println!("Holdings: {}", report.holdings.len());
     println!("Negative balances: {}", report.negative_balances.len());
     for portfolio in report.portfolios {

@@ -125,9 +125,7 @@ fn manual_transaction(id: Id, portfolio_id: Id, input: ManualTransactionInput) -
         base_amount: input.base_amount,
         quote_asset_id: input.quote_asset_id,
         quote_amount: input.quote_amount,
-        quote_ledger_effect: if input.kind.has_implicit_zero_cost_basis()
-            || input.kind == TransactionKind::StakingReward
-        {
+        quote_ledger_effect: if input.kind.has_implicit_zero_cost_basis() {
             LedgerEffect::Ignore
         } else {
             input.quote_ledger_effect
@@ -191,7 +189,7 @@ fn validate_quote(input: &ManualTransactionInput) -> anyhow::Result<()> {
     if input.kind == TransactionKind::StakingReward {
         anyhow::ensure!(
             input.quote_amount.is_none(),
-            "staking rewards use dated market prices, not a quote payment"
+            "staking rewards have zero acquisition cost and no quote payment"
         );
         // Supported old deposits can retain a quote-asset metadata reference.
         return Ok(());

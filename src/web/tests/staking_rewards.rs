@@ -41,7 +41,7 @@ async fn body(f: &TestApp, asset: u64) -> String {
 }
 
 #[tokio::test]
-async fn saves_reward_without_payment_and_shows_separate_private_income() {
+async fn saves_zero_cost_reward_without_payment_or_receipt_income() {
     let f = fixture().await;
     let btc = f.asset_id("BTC").await;
     assert_eq!(
@@ -57,17 +57,18 @@ async fn saves_reward_without_payment_and_shows_separate_private_income() {
     assert_eq!(t.quote_ledger_effect, LedgerEffect::Ignore);
     assert_eq!(data.ledger_entries.len(), 1);
     let r = build_report(&data);
-    assert_eq!(r.total_staking_income, Some(dec!(54000)));
-    assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(0)));
+    assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(54000)));
+    assert_eq!(r.holdings[0].net_invested, Some(dec!(0)));
     for path in ["/".into(), format!("/portfolios/{}", data.portfolios[0].id)] {
         let page = html(f.get(&path).await, StatusCode::OK).await;
-        assert!(page.contains("Staking income"));
-        assert!(page.contains("aria-label=\"Staking income table\""));
+        assert!(!page.contains("Staking income"));
+        assert!(!page.contains("historical prices or conversions are missing"));
         assert!(page.contains("<span class=\"private-value\">54,000.00</span>"));
     }
     let page = html(f.get("/transactions").await, StatusCode::OK).await;
     assert!(page.contains("Staking reward"));
-    assert!(page.contains("Market-value reward basis"));
+    assert!(page.contains("Zero cost basis"));
 }
 
 #[tokio::test]
@@ -98,7 +99,7 @@ async fn reward_edit_preserves_ignored_quote_asset_metadata() {
 }
 
 #[tokio::test]
-async fn reward_validation_preserves_draft_and_reports_missing_historical_prices() {
+async fn reward_validation_preserves_draft_and_missing_prices_affect_value_not_basis() {
     let f = TestApp::with_assets();
     let eur = f.asset_id("EUR").await;
     let old = std::fs::read(&f.path).unwrap();
@@ -118,9 +119,9 @@ async fn reward_validation_preserves_draft_and_reports_missing_historical_prices
         StatusCode::SEE_OTHER
     );
     let r = build_report(&f.persisted());
-    assert_eq!(r.total_staking_income, None);
-    assert_eq!(r.unresolved_staking_income, 1);
+    assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
+    assert_eq!(r.holdings[0].value, None);
     let page = html(f.get("/").await, StatusCode::OK).await;
-    assert!(page.contains("staking positions have unavailable income"));
+    assert!(!page.contains("staking positions have unavailable income"));
     assert!(page.contains("Unavailable"));
 }
