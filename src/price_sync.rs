@@ -6,6 +6,7 @@ use crate::{
     accounting::now,
     assets::validate_usd_asset,
     model::{Asset, AssetKind, Id, Price, StoreData},
+    price_history::compact_price_history,
     store::Store,
 };
 
@@ -20,9 +21,9 @@ pub struct PriceBatch {
 }
 
 pub fn sync_prices(store: &mut Store) -> anyhow::Result<SyncSummary> {
-    let batch = fetch_prices(&store.data)?;
-    store.data.prices.extend(batch.prices);
-    Ok(batch.summary)
+    let snapshot = store.data.clone();
+    let batch = fetch_prices(&snapshot)?;
+    Ok(merge_price_batch(&mut store.data, &snapshot, batch))
 }
 
 pub fn fetch_prices(data: &StoreData) -> anyhow::Result<PriceBatch> {
@@ -354,6 +355,14 @@ pub fn merge_price_batch(
         );
     }
     data.prices.extend(batch.prices);
+    let removed = compact_price_history(data, now());
+    if removed > 0 {
+        tracing::info!(
+            removed,
+            remaining = data.prices.len(),
+            "compacted daily price history"
+        );
+    }
     batch.summary
 }
 

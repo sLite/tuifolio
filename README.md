@@ -51,6 +51,29 @@ you navigate or reload a view. On shutdown, future scheduled attempts stop and
 an active refresh finishes before the server exits. Refresh scheduling is a
 runtime option; it adds no datastore fields.
 
+### Price history retention
+
+Successful automatic, manual web and CLI refreshes compact prices in the same
+save as the new observations:
+
+- Keep every observation from the current UTC day.
+- For completed days, keep the last observation per asset ID and canonical quote
+  currency. Equal timestamps keep the first saved observation, matching valuation.
+- Also keep each pair's latest observation at or before every existing
+  transaction's UTC timestamp. These conservative snapshots preserve historical
+  conversions, reciprocal rates, fees and closed-position calculations in all
+  reporting currencies.
+
+Source labels do not affect retention. Manual observations, researched backfills
+and proxies use the same rules. Retained records keep their original timestamps,
+values, sources and order. Failed fetches or pre-replacement saves do not publish
+cleanup. Opening the store or adding a manual price does not itself compact it.
+
+A new or edited backdated transaction can have less precise intraday pricing
+after cleanup. Retention protects existing transaction cutoffs, not every future
+date you might enter. Daily history and transaction snapshots still grow over
+time, but completed days no longer accumulate every five-minute refresh.
+
 ## Web interface
 
 - **Overview** shows net worth, assets, liabilities, unrealized PnL, remaining

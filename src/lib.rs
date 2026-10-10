@@ -6,6 +6,7 @@ pub mod integrity;
 pub mod ledger;
 pub mod model;
 pub mod portfolios;
+pub mod price_history;
 pub mod price_sync;
 pub mod stock_splits;
 pub mod store;

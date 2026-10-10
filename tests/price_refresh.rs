@@ -24,13 +24,15 @@ fn invalid_usd_store() -> StoreData {
             metadata_source: AssetMetadataSource::User,
         });
     }
-    data.prices.push(Price {
-        asset_id: 1,
-        timestamp: chrono::Utc::now(),
-        price: rust_decimal::Decimal::ONE,
-        currency: "USD".into(),
-        source: "manual".into(),
-    });
+    for hour in [1, 9, 23] {
+        data.prices.push(Price {
+            asset_id: 1,
+            timestamp: format!("2020-01-01T{hour:02}:00:00Z").parse().unwrap(),
+            price: rust_decimal::Decimal::ONE,
+            currency: "USD".into(),
+            source: "manual".into(),
+        });
+    }
     data
 }
 

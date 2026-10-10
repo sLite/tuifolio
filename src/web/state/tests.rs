@@ -216,6 +216,7 @@ async fn start_blocked_refresh(state: &AppState) -> (RefreshJob, mpsc::Sender<()
 #[tokio::test]
 async fn provider_failure_retains_data_and_releases_the_refresh_slot() {
     let fixture = Fixture::new();
+    seed_prunable_history(&fixture.state).await;
     let before = serde_json::to_value(fixture.state.snapshot().await.unwrap()).unwrap();
     let error = fixture
         .state
@@ -242,6 +243,7 @@ async fn provider_failure_retains_data_and_releases_the_refresh_slot() {
 #[tokio::test]
 async fn save_failure_rolls_back_and_releases_the_refresh_slot() {
     let fixture = Fixture::new();
+    seed_prunable_history(&fixture.state).await;
     let before = serde_json::to_value(fixture.state.snapshot().await.unwrap()).unwrap();
     std::fs::rename(
         fixture.directory.path().join("data"),
@@ -261,4 +263,126 @@ async fn save_failure_rolls_back_and_releases_the_refresh_slot() {
         serde_json::to_value(fixture.state.snapshot().await.unwrap()).unwrap(),
         before
     );
+}
+
+async fn seed_prunable_history(state: &AppState) {
+    state
+        .edit(|store| {
+            let id = crate::assets::save_asset(
+                store,
+                None,
+                crate::assets::AssetInput {
+                    symbol: "EUR".into(),
+                    name: "Euro".into(),
+                    kind: crate::model::AssetKind::Fiat,
+                    yahoo_symbol: None,
+                    tradingview_symbol: None,
+                    valuation_currency: None,
+                },
+            )?;
+            for hour in [1, 8, 9, 23] {
+                store.data.prices.push(crate::model::Price {
+                    asset_id: id,
+                    timestamp: format!("2020-01-01T{hour:02}:00:00Z").parse().unwrap(),
+                    price: rust_decimal::Decimal::ONE,
+                    currency: "USD".into(),
+                    source: "synthetic".into(),
+                });
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn successful_refresh_saves_fetched_prices_and_compaction_atomically() {
+    let fixture = Fixture::new();
+    seed_prunable_history(&fixture.state).await;
+    let refresh = fixture
+        .state
+        .refresh_with(|data| {
+            Ok(PriceBatch {
+                prices: vec![crate::model::Price {
+                    asset_id: data.assets[0].id,
+                    timestamp: chrono::Utc::now(),
+                    price: rust_decimal::Decimal::ONE,
+                    currency: "USD".into(),
+                    source: "yahoo".into(),
+                }],
+                summary: SyncSummary {
+                    updated: 1,
+                    unsupported: 0,
+                },
+            })
+        })
+        .await
+        .unwrap();
+    let PriceRefresh::Updated(summary) = refresh else {
+        panic!("refresh did not run")
+    };
+    assert_eq!(summary.updated, 1);
+    let data = fixture.state.snapshot().await.unwrap();
+    assert_eq!(data.prices.len(), 2);
+    assert_eq!(
+        data.prices[0].timestamp,
+        "2020-01-01T23:00:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap()
+    );
+    let saved: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fixture.directory.path().join("data/store.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved, serde_json::to_value(data).unwrap());
+    assert!(!fixture.state.is_refreshing());
+}
+
+#[tokio::test]
+async fn refresh_compaction_preserves_transactions_added_while_fetch_was_blocked() {
+    let fixture = Fixture::new();
+    seed_prunable_history(&fixture.state).await;
+    let (job, resume) = start_blocked_refresh(&fixture.state).await;
+    fixture
+        .state
+        .edit(|store| {
+            let portfolio = crate::portfolios::create_portfolio(
+                store,
+                crate::portfolios::PortfolioInput {
+                    name: "Main".into(),
+                },
+            )?;
+            crate::transactions::add_manual_transaction(
+                store,
+                crate::transactions::ManualTransactionInput {
+                    portfolio_id: portfolio,
+                    timestamp: "2020-01-01T10:00:00Z".parse().unwrap(),
+                    kind: crate::model::TransactionKind::Deposit,
+                    base_asset_id: store.data.assets[0].id,
+                    base_amount: rust_decimal::Decimal::ONE,
+                    quote_asset_id: None,
+                    quote_amount: None,
+                    quote_ledger_effect: crate::model::LedgerEffect::Ignore,
+                    fee_asset_id: None,
+                    fee_amount: None,
+                    exchange: None,
+                    broker: None,
+                    notes: None,
+                },
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    resume.send(()).unwrap();
+    job.await.unwrap().unwrap();
+    let data = fixture.state.snapshot().await.unwrap();
+    assert_eq!(data.prices.len(), 2);
+    assert_eq!(data.transactions.len(), 1);
+    assert!(data.prices.iter().any(|p| {
+        p.timestamp
+            == "2020-01-01T09:00:00Z"
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
+    }));
 }
