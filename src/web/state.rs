@@ -8,7 +8,7 @@ use crate::{
     assets::InvalidUsdAsset,
     model::StoreData,
     price_sync::{PriceBatch, SyncSummary, fetch_prices, merge_price_batch},
-    store::Store,
+    store::{SaveDurabilityError, Store},
 };
 
 #[derive(Clone)]
@@ -66,11 +66,26 @@ impl AppState {
         &self,
         operation: impl FnOnce(&mut Store) -> anyhow::Result<T>,
     ) -> Result<T, WebError> {
+        self.commit_with_save(operation, Store::save)
+    }
+
+    fn commit_with_save<T>(
+        &self,
+        operation: impl FnOnce(&mut Store) -> anyhow::Result<T>,
+        save: impl FnOnce(&Store) -> anyhow::Result<()>,
+    ) -> Result<T, WebError> {
         let mut current = self.store.lock().map_err(lock_error)?;
         let mut candidate = current.clone();
         let result = operation(&mut candidate).map_err(WebError::edit)?;
-        candidate.save()?;
-        *current = candidate;
+        let saved = save(&candidate);
+        if saved.is_ok()
+            || saved
+                .as_ref()
+                .is_err_and(|error| error.is::<SaveDurabilityError>())
+        {
+            *current = candidate;
+        }
+        saved?;
         Ok(result)
     }
 

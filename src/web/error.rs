@@ -56,6 +56,12 @@ impl WebError {
 impl From<anyhow::Error> for WebError {
     fn from(error: anyhow::Error) -> Self {
         tracing::error!(error = %format!("{error:#}"), "web operation failed");
+        if error.is::<crate::store::SaveDurabilityError>() {
+            return Self {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: error.to_string(),
+            };
+        }
         Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Could not complete this operation. Your edit was not saved. See the terminal for details.".into() }
     }
 }

@@ -111,6 +111,44 @@ async fn invalid_stored_usd_configuration_returns_actionable_errors_without_chan
     ));
 }
 
+#[tokio::test]
+async fn post_replacement_durability_error_publishes_saved_state_and_reports_truthfully() {
+    let fixture = Fixture::new();
+    let error = fixture
+        .state
+        .commit_with_save(
+            |store| {
+                crate::portfolios::create_portfolio(
+                    store,
+                    crate::portfolios::PortfolioInput {
+                        name: "Committed".into(),
+                    },
+                )?;
+                Ok(())
+            },
+            |store| {
+                store.save()?;
+                Err(crate::store::SaveDurabilityError {
+                    source: std::io::Error::other("injected directory-sync failure"),
+                }
+                .into())
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(error.message.contains("store was saved"));
+    assert!(!error.message.contains("not saved"));
+    let saved: crate::model::StoreData = serde_json::from_slice(
+        &std::fs::read(fixture.directory.path().join("data/store.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved.portfolios[0].name, "Committed");
+    assert_eq!(
+        fixture.state.snapshot().await.unwrap().portfolios[0].name,
+        "Committed"
+    );
+}
+
 fn empty_batch() -> PriceBatch {
     PriceBatch {
         prices: Vec::new(),

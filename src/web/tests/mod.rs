@@ -257,6 +257,21 @@ async fn base_currency_changes_persist_and_redirect_locally() {
 }
 
 #[tokio::test]
+async fn base_currency_validation_is_shared_with_cli_and_normalizes_identifiers() {
+    let fixture = TestApp::with_assets();
+    let response = fixture
+        .post("/base", "currency=%20usd%20&return_to=%2F")
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(fixture.persisted().config.selected_base_currency, "USD");
+    let before = std::fs::read(&fixture.path).unwrap();
+    let response = fixture.post("/base", "currency=AAPL&return_to=%2F").await;
+    let page = html(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+    assert!(page.contains("unsupported reporting currency"));
+    assert_eq!(std::fs::read(&fixture.path).unwrap(), before);
+}
+
+#[tokio::test]
 async fn rejects_cross_origin_writes_and_foreign_hosts() {
     let fixture = TestApp::with_assets();
     let body = fixture.buy_body().await;

@@ -102,6 +102,23 @@ decimal places and crypto valuations display eight.
 The ledger-first JSON datastore lives in the platform's local data directory
 under `tuifolio/store.json`, unless you supply `--store`.
 
+Existing datastore paths resolve to their canonical target before locking and
+saving. Symlink aliases share the target's lock and remain symlinks after saves.
+New stores resolve their parent directory first. Dangling file symlinks are
+rejected rather than replaced.
+
+Loading and saving validate structural IDs, references, allocator bounds, split
+configuration, and reporting currencies. Invalid structures are rejected without
+rewriting the input. This does not apply new-transaction amount/quote rules to
+all historical records: supported ignored deposit quote metadata stays intact.
+
+On Unix, saving synchronizes the replacement file and its containing directory.
+If directory synchronization fails after replacement, the error explicitly says
+the store was saved but crash durability is uncertain. The web app retains that
+saved state in memory rather than claiming the edit was rolled back. Other
+platforms log that directory synchronization is unavailable; crash durability
+there is not guaranteed.
+
 - Tracks portfolios, assets, transactions, ledger entries, and prices.
 - Every transaction posts its asset movement to ledger balances. Buys, sells,
   and quoted asset increases/decreases can optionally post their cash movement.
@@ -215,7 +232,11 @@ The input appears only for these types and updates when the type changes with
 JavaScript enabled. Switching to another type omits intrinsic valuation on save.
 
 Currency assets used in accounting must retain a Cash or Crypto type. Their
-display names and provider settings remain editable.
+display names and provider settings remain editable. CLI and web reporting
+currency changes share validation and normalize identifiers to uppercase.
+Reporting accepts recognized fiat codes or unique Cash/Crypto identities, not
+arbitrary stock symbols. Configured BTC and ETH units remain available even
+before any holdings exist.
 
 ### Stock splits
 

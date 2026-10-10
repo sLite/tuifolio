@@ -1,6 +1,8 @@
 pub mod accounting;
 pub mod assets;
+pub mod currencies;
 pub mod formatting;
+pub mod integrity;
 pub mod ledger;
 pub mod model;
 pub mod portfolios;

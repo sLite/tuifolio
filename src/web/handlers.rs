@@ -93,11 +93,13 @@ pub(super) async fn change_base(
     let return_to = safe_return_path(&form.return_to);
     state
         .edit(move |store| {
+            let currency =
+                crate::currencies::normalize_reporting_currency(&store.data, &form.currency)?;
             anyhow::ensure!(
-                store.data.config.base_currencies.contains(&form.currency),
+                store.data.config.base_currencies.contains(&currency),
                 "select a configured base currency"
             );
-            store.data.config.selected_base_currency = form.currency;
+            store.data.config.selected_base_currency = currency;
             Ok(())
         })
         .await?;

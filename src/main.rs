@@ -193,6 +193,7 @@ fn add_price_command(
 }
 
 fn base_command(store: &mut Store, currency: String) -> anyhow::Result<()> {
+    let currency = tuifolio::currencies::normalize_reporting_currency(&store.data, &currency)?;
     if !store.data.config.base_currencies.contains(&currency) {
         store.data.config.base_currencies.push(currency.clone());
     }

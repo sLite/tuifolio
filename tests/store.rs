@@ -40,6 +40,75 @@ fn atomically_replaces_the_store_and_reopens_the_latest_data() {
     assert_eq!(reopened.data.portfolios[1].name, "Second");
 }
 
+#[cfg(unix)]
+#[test]
+fn symlink_file_and_target_share_lock_and_save_without_forking() {
+    let directory = tempfile::tempdir().unwrap();
+    let target = directory.path().join("store.json");
+    let alias = directory.path().join("alias.json");
+    let store = Store::open(Some(target.clone())).unwrap();
+    store.save().unwrap();
+    drop(store);
+    std::os::unix::fs::symlink(&target, &alias).unwrap();
+    let mut store = Store::open(Some(alias.clone())).unwrap();
+    assert_eq!(store.path(), &target);
+    assert!(Store::open(Some(target.clone())).is_err());
+    tuifolio::portfolios::create_portfolio(
+        &mut store,
+        tuifolio::portfolios::PortfolioInput {
+            name: "Shared".into(),
+        },
+    )
+    .unwrap();
+    store.save().unwrap();
+    assert!(
+        std::fs::symlink_metadata(&alias)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    drop(store);
+    let reopened = Store::open(Some(target.clone())).unwrap();
+    assert_eq!(reopened.data.portfolios[0].name, "Shared");
+    assert!(Store::open(Some(alias)).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn new_paths_under_symlinked_parents_share_the_same_lock() {
+    let directory = tempfile::tempdir().unwrap();
+    let target = directory.path().join("data");
+    let alias = directory.path().join("alias");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &alias).unwrap();
+    let store = Store::open(Some(alias.join("new.json"))).unwrap();
+    assert_eq!(store.path(), &target.join("new.json"));
+    assert!(Store::open(Some(target.join("new.json"))).is_err());
+    store.save().unwrap();
+    assert!(
+        std::fs::symlink_metadata(alias)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dangling_store_symlinks_are_rejected_without_replacing_them() {
+    let directory = tempfile::tempdir().unwrap();
+    let alias = directory.path().join("alias.json");
+    std::os::unix::fs::symlink(directory.path().join("missing.json"), &alias).unwrap();
+    assert!(Store::open(Some(alias.clone())).is_err());
+    assert!(
+        std::fs::symlink_metadata(alias)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(!directory.path().join("missing.json").exists());
+}
+
 fn preservation_fixture() -> tuifolio::model::StoreData {
     use tuifolio::model::{Asset, AssetKind, AssetMetadataSource, StockSplit};
     let mut data = tuifolio::model::StoreData {
@@ -99,6 +168,36 @@ fn assert_store_rejected_without_rewriting(data: serde_json::Value, expected_err
         assert!(message.contains(expected_error), "{message}");
         assert_eq!(std::fs::read(&path).unwrap(), original);
     }
+}
+
+#[test]
+fn structural_defects_are_rejected_without_rewriting_or_retaining_locks() {
+    let original = serde_json::to_value(preservation_fixture()).unwrap();
+    let mut duplicate = original.clone();
+    let asset = duplicate["assets"][0].clone();
+    duplicate["assets"].as_array_mut().unwrap().push(asset);
+    assert_store_rejected_without_rewriting(duplicate, "duplicate datastore ID");
+    let mut allocator = original.clone();
+    allocator["next_id"] = 134.into();
+    assert_store_rejected_without_rewriting(allocator, "next_id must exceed");
+    let mut split = original.clone();
+    split["config"]["stock_splits"][0]["asset_id"] = 999.into();
+    assert_store_rejected_without_rewriting(split, "split references missing asset");
+    let mut split = original.clone();
+    split["config"]["stock_splits"][0]["denominator"] = "0".into();
+    assert_store_rejected_without_rewriting(split, "must be positive");
+    let mut price = original.clone();
+    price["prices"] = serde_json::json!([{
+        "asset_id":999, "timestamp":"2020-01-01T00:00:00Z",
+        "price":"1", "currency":"EUR", "source":"fixture"
+    }]);
+    assert_store_rejected_without_rewriting(price, "price references missing asset");
+    let mut config = original.clone();
+    config["config"]["selected_base_currency"] = "UNKNOWN".into();
+    assert_store_rejected_without_rewriting(config, "is not configured");
+    let mut collision = original;
+    collision["portfolios"] = serde_json::json!([{"id":134,"name":"Collision"}]);
+    assert_store_rejected_without_rewriting(collision, "duplicate datastore ID");
 }
 
 #[test]
