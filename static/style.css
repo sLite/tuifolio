@@ -105,6 +105,7 @@ main { max-width: 1824px; margin: auto; padding: 50px 48px 77px; min-height: cal
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 main > .panel + .panel { margin-top: 29px; }
+.panel > .panel-note { margin: 0; padding: 19px 29px; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 25px 29px; gap: 14px; border-bottom: 1px solid var(--border); }
 .panel-heading > .muted { font-size: 14px; }
 .count { display: inline-flex; align-items: center; justify-content: center; padding: 1px 8px; margin-left: 10px; font-size: 13px; font-weight: 400; color: var(--muted); background: #242b2f; border-radius: 5px; vertical-align: middle; }

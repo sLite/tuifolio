@@ -4,4 +4,4 @@
     <tbody>{% for row in realized %}<tr><td>{{ row.portfolio }}</td><td>{{ row.symbol }}</td><td class="number {{ row.pnl.tone }}">{% call privacy::amount(row.pnl.text) %}</td></tr>{% endfor %}</tbody>
   </table>
 </div>
-<p class="field-help">Weighted-average cost. Includes closed positions and investment assets used to pay fees. Cash FX performance is not included. Recorded net spending is a separate primary-transaction cash-flow reference, not remaining basis.</p>
+<p class="field-help panel-note">Weighted-average cost. Includes closed positions and investment assets used to pay fees. Cash FX performance is not included. Recorded net spending is a separate primary-transaction cash-flow reference, not remaining basis.</p>
