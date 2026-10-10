@@ -25,7 +25,6 @@ fn fixture() -> (Store, Id) {
         broker: None,
         notes: None,
         source: "fixture".into(),
-        source_row_hash: "fixture:gift".into(),
     });
     (store, asset)
 }

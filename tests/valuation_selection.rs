@@ -117,7 +117,7 @@ fn ticker_collisions_use_asset_ids_for_both_values_and_historical_costs() {
             .iter()
             .find(|h| h.asset_id == xyz)
             .unwrap()
-            .net_invested,
+            .recorded_net_spending,
         Some(dec!(0.3))
     );
     store.save().unwrap();

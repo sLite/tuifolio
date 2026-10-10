@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tuifolio::model::{Asset, AssetKind, AssetMetadataSource, Price, StoreData};
+use tuifolio::model::{Asset, AssetKind, Price, StoreData};
 
 fn invalid_usd_store() -> StoreData {
     let mut data = StoreData {
@@ -21,7 +21,6 @@ fn invalid_usd_store() -> StoreData {
             yahoo_symbol: None,
             tradingview_symbol: None,
             valuation_currency: None,
-            metadata_source: AssetMetadataSource::User,
         });
     }
     for hour in [1, 9, 23] {
@@ -34,21 +33,6 @@ fn invalid_usd_store() -> StoreData {
         });
     }
     data
-}
-
-#[test]
-fn cli_refresh_rejects_stored_crypto_usd_without_aborting_or_rewriting() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("store.json");
-    let original = serde_json::to_vec(&invalid_usd_store()).unwrap();
-    std::fs::write(&path, &original).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_tuifolio"))
-        .args(["--store", path.to_str().unwrap(), "sync-prices"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("USD must use the Cash asset type"));
-    assert_eq!(std::fs::read(&path).unwrap(), original);
 }
 
 struct Server(Child);

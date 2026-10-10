@@ -53,13 +53,14 @@ async fn saves_zero_cost_reward_without_payment_or_receipt_income() {
     let data = f.persisted();
     let t = &data.transactions[0];
     assert_eq!(t.kind, TransactionKind::StakingReward);
+    assert_eq!(t.quote_asset_id, None);
     assert_eq!(t.quote_amount, None);
     assert_eq!(t.quote_ledger_effect, LedgerEffect::Ignore);
     assert_eq!(data.ledger_entries.len(), 1);
     let r = build_report(&data);
     assert_eq!(r.holdings[0].remaining_cost_basis, Some(dec!(0)));
     assert_eq!(r.holdings[0].unrealized_pnl, Some(dec!(54000)));
-    assert_eq!(r.holdings[0].net_invested, Some(dec!(0)));
+    assert_eq!(r.holdings[0].recorded_net_spending, Some(dec!(0)));
     for path in ["/".into(), format!("/portfolios/{}", data.portfolios[0].id)] {
         let page = html(f.get(&path).await, StatusCode::OK).await;
         assert!(!page.contains("Staking income"));
@@ -72,18 +73,11 @@ async fn saves_zero_cost_reward_without_payment_or_receipt_income() {
 }
 
 #[tokio::test]
-async fn reward_edit_preserves_ignored_quote_asset_metadata() {
+async fn reward_edit_keeps_quote_fields_empty_and_preserves_accounting() {
     let f = fixture().await;
     let btc = f.asset_id("BTC").await;
-    let eur = f.asset_id("EUR").await;
     f.post("/transactions/new", &body(&f, btc).await).await;
-    f.state
-        .edit(move |store| {
-            store.data.transactions[0].quote_asset_id = Some(eur);
-            Ok(())
-        })
-        .await
-        .unwrap();
+    let original = serde_json::to_value(f.persisted()).unwrap();
     let id = f.persisted().transactions[0].id;
     let url = format!("/transactions/{id}/edit");
     let page = html(f.get(&url).await, StatusCode::OK).await;
@@ -94,8 +88,37 @@ async fn reward_edit_preserves_ignored_quote_asset_metadata() {
         StatusCode::SEE_OTHER
     );
     let data = f.persisted();
-    assert_eq!(data.transactions[0].quote_asset_id, Some(eur));
-    assert_eq!(data.transactions[0].source_row_hash, format!("manual:{id}"));
+    assert_eq!(data.transactions[0].quote_asset_id, None);
+    assert_eq!(data.transactions[0].quote_amount, None);
+    assert_eq!(serde_json::to_value(data).unwrap(), original);
+}
+
+#[tokio::test]
+async fn reward_edits_reject_forged_quote_fields_and_preserve_the_saved_record() {
+    let f = fixture().await;
+    let btc = f.asset_id("BTC").await;
+    let eur = f.asset_id("EUR").await;
+    f.post("/transactions/new", &body(&f, btc).await).await;
+    let original = std::fs::read(&f.path).unwrap();
+    let url = format!("/transactions/{}/edit", f.persisted().transactions[0].id);
+    for quote in [
+        format!("&quote_asset_id={eur}"),
+        format!("&quote_asset_id={eur}&quote_amount=0"),
+        "&quote_amount=0".into(),
+    ] {
+        let draft = body(&f, btc)
+            .await
+            .replace("notes=staking%20reward", "notes=Keep%20my%20draft")
+            + &quote;
+        let page = html(
+            f.submit_edit(&url, &draft).await,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        )
+        .await;
+        assert!(page.contains("quote fields are only applicable"));
+        assert!(page.contains("Keep my draft"));
+        assert_eq!(std::fs::read(&f.path).unwrap(), original);
+    }
 }
 
 #[tokio::test]

@@ -1,5 +1,5 @@
 use crate::{
-    model::{Asset, AssetKind, AssetMetadataSource, Id, StoreData},
+    model::{Asset, AssetKind, Id, StoreData},
     store::Store,
 };
 
@@ -74,7 +74,6 @@ fn normalized_asset(input: AssetInput, id: Id, creating: bool) -> Asset {
         tradingview_symbol: clean(input.tradingview_symbol),
         valuation_currency: clean(input.valuation_currency)
             .map(|currency| currency.to_ascii_uppercase()),
-        metadata_source: AssetMetadataSource::User,
     }
 }
 
@@ -192,7 +191,6 @@ pub fn currency_in_use(data: &StoreData, asset: &Asset) -> bool {
         return true;
     }
     data.config.base_currencies.contains(&asset.symbol)
-        || data.config.default_base_currency == asset.symbol
         || data.config.selected_base_currency == asset.symbol
         || data
             .prices

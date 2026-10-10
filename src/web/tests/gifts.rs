@@ -58,7 +58,7 @@ impl Fixture {
             .iter()
             .find(|holding| holding.asset_id == self.asset)
             .unwrap();
-        assert_eq!(holding.net_invested, Some(dec!(0)));
+        assert_eq!(holding.recorded_net_spending, Some(dec!(0)));
         let fee = data.transactions[0].fee_amount.unwrap_or(dec!(0));
         assert_eq!(holding.remaining_cost_basis, Some(fee));
         assert_eq!(holding.unrealized_pnl, Some(dec!(350) - fee));
@@ -115,7 +115,6 @@ async fn changing_a_paid_transaction_to_gift_clears_quotes_and_preserves_fees_an
     let data = fixture.app.persisted();
     let updated = &data.transactions[0];
     assert_eq!(updated.id, previous.id);
-    assert_eq!(updated.source_row_hash, previous.source_row_hash);
     assert_eq!(updated.fee_amount, Some(dec!(2)));
     assert_eq!(updated.notes.as_deref(), Some("Keep this note"));
     assert_eq!(data.ledger_entries.len(), 2);
@@ -163,7 +162,7 @@ async fn changing_gift_to_an_unquoted_asset_increase_restores_unknown_basis() {
         StatusCode::SEE_OTHER
     );
     let report = build_report(&fixture.app.persisted());
-    assert_eq!(report.holdings[0].net_invested, None);
+    assert_eq!(report.holdings[0].recorded_net_spending, None);
     assert_eq!(report.holdings[0].unrealized_pnl, None);
 }
 

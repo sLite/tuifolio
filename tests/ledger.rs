@@ -32,7 +32,6 @@ fn transaction(
         broker: None,
         notes: None,
         source: "manual".into(),
-        source_row_hash: format!("manual:{id}"),
     }
 }
 

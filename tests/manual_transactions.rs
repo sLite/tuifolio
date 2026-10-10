@@ -6,7 +6,7 @@ use tuifolio::{
     accounting::build_report,
     assets::{AssetInput, save_asset},
     model::{AssetKind, LedgerEffect, Transaction},
-    price_sync::add_manual_price,
+    price_sync::add_manual_price_for_asset,
     store::Store,
     transactions::{ManualTransactionInput, add_manual_transaction},
 };
@@ -43,7 +43,7 @@ fn manual_buy_uses_quote_amount_for_pnl_without_cash_holding() {
     input.quote_amount = Some(Decimal::from(10000));
     let assets_before = serde_json::to_value(&store.data.assets).unwrap();
     let result = add_manual_transaction(&mut store, input).unwrap();
-    add_manual_price(&mut store, "BTC", Decimal::from(50000), "USD").unwrap();
+    add_manual_price_for_asset(&mut store, result.asset_id, Decimal::from(50000), "USD").unwrap();
     let report = build_report(&store.data);
     assert!(
         report
@@ -51,7 +51,7 @@ fn manual_buy_uses_quote_amount_for_pnl_without_cash_holding() {
             .iter()
             .any(|row| row.asset_id == result.asset_id
                 && row.quantity == Decimal::ONE
-                && row.net_invested == Some(Decimal::from(10000)))
+                && row.recorded_net_spending == Some(Decimal::from(10000)))
     );
     assert!(
         !report
@@ -138,7 +138,6 @@ fn broken_transaction(input: ManualTransactionInput) -> Transaction {
         broker: None,
         notes: None,
         source: "test".into(),
-        source_row_hash: "broken".into(),
     }
 }
 

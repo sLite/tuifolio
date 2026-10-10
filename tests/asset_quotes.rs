@@ -11,7 +11,7 @@ use tuifolio::{
         LedgerRole, TransactionKind,
         TransactionKind::{AssetDecrease, AssetIncrease},
     },
-    price_sync::add_manual_price,
+    price_sync::add_manual_price_for_asset,
     store::Store,
     transactions::{
         ManualTransactionInput, add_manual_transaction, delete_transaction, update_transaction,
@@ -130,7 +130,7 @@ fn property_costs_and_unquoted_valuation_increases_produce_the_expected_pnl() {
     );
     let holding = fixture.holding();
     assert_eq!(holding.value, Some(Decimal::from(500)));
-    assert_eq!(holding.net_invested, Some(Decimal::from(420)));
+    assert_eq!(holding.recorded_net_spending, Some(Decimal::from(420)));
     assert_eq!(holding.unrealized_pnl, Some(Decimal::from(80)));
     assert_eq!(
         build_report(&fixture.store.data).total_unrealized_pnl,
@@ -150,7 +150,10 @@ fn asset_increases_deduct_cash_only_when_posting_is_selected() {
             0
         };
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
-        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+        assert_eq!(
+            fixture.holding().recorded_net_spending,
+            Some(Decimal::from(420))
+        );
         assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(80)));
     }
 }
@@ -164,7 +167,10 @@ fn asset_decreases_apply_proceeds_to_pnl_and_optionally_add_cash() {
         let expected = if effect == LedgerEffect::Post { 60 } else { 0 };
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
         assert_eq!(fixture.holding().value, Some(Decimal::from(400)));
-        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(360)));
+        assert_eq!(
+            fixture.holding().recorded_net_spending,
+            Some(Decimal::from(360))
+        );
         assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(64)));
         assert_eq!(
             fixture.holding().remaining_cost_basis,
@@ -191,7 +197,10 @@ fn unquoted_valuation_adjustments_change_value_without_changing_cost_or_cash() {
         LedgerEffect::Post,
     );
     assert_eq!(fixture.holding().value, Some(Decimal::from(400)));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+    assert_eq!(
+        fixture.holding().recorded_net_spending,
+        Some(Decimal::from(420))
+    );
     assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(-20)));
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
 }
@@ -209,7 +218,10 @@ fn changing_the_cash_effect_rebuilds_cash_without_changing_cost_basis() {
             0
         };
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
-        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+        assert_eq!(
+            fixture.holding().recorded_net_spending,
+            Some(Decimal::from(420))
+        );
     }
 }
 
@@ -226,7 +238,10 @@ fn deleting_an_asset_decrease_removes_its_proceeds_and_cash_movement() {
     delete_transaction(&mut fixture.store, id).unwrap();
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
     assert_eq!(fixture.holding().value, Some(Decimal::from(500)));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+    assert_eq!(
+        fixture.holding().recorded_net_spending,
+        Some(Decimal::from(420))
+    );
     assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(80)));
 }
 
@@ -234,7 +249,7 @@ fn deleting_an_asset_decrease_removes_its_proceeds_and_cash_movement() {
 fn asset_quotes_use_historical_exchange_rates_for_cost_basis() {
     let mut fixture = Fixture::new();
     let usd = create_asset(&mut fixture.store, "USD", "US dollar", AssetKind::Fiat);
-    add_manual_price(&mut fixture.store, "USD", Decimal::new(9, 1), "EUR").unwrap();
+    add_manual_price_for_asset(&mut fixture.store, usd, Decimal::new(9, 1), "EUR").unwrap();
     let mut input = fixture.input(
         TransactionKind::AssetIncrease,
         500,
@@ -243,8 +258,11 @@ fn asset_quotes_use_historical_exchange_rates_for_cost_basis() {
     );
     input.quote_asset_id = Some(usd);
     add_manual_transaction(&mut fixture.store, input).unwrap();
-    add_manual_price(&mut fixture.store, "USD", Decimal::new(8, 1), "EUR").unwrap();
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(378)));
+    add_manual_price_for_asset(&mut fixture.store, usd, Decimal::new(8, 1), "EUR").unwrap();
+    assert_eq!(
+        fixture.holding().recorded_net_spending,
+        Some(Decimal::from(378))
+    );
     assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(122)));
 }
 
@@ -275,7 +293,10 @@ fn quoted_movements_are_scoped_to_the_holding_portfolio_and_asset() {
     );
     different_asset.base_asset_id = other_asset;
     add_manual_transaction(&mut fixture.store, different_asset).unwrap();
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+    assert_eq!(
+        fixture.holding().recorded_net_spending,
+        Some(Decimal::from(420))
+    );
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
 }
 
@@ -283,7 +304,7 @@ fn quoted_movements_are_scoped_to_the_holding_portfolio_and_asset() {
 fn quoted_asset_movements_work_for_market_priced_assets() {
     let mut fixture = Fixture::new();
     let stock = create_asset(&mut fixture.store, "AAPL", "Apple", AssetKind::Stock);
-    add_manual_price(&mut fixture.store, "AAPL", Decimal::from(100), "EUR").unwrap();
+    add_manual_price_for_asset(&mut fixture.store, stock, Decimal::from(100), "EUR").unwrap();
     let mut acquisition = fixture.input(AssetIncrease, 10, Some(800), Post);
     acquisition.base_asset_id = stock;
     add_manual_transaction(&mut fixture.store, acquisition).unwrap();
@@ -297,7 +318,7 @@ fn quoted_asset_movements_work_for_market_priced_assets() {
         .find(|holding| holding.asset_id == stock)
         .unwrap();
     assert_eq!(holding.value, Some(Decimal::from(600)));
-    assert_eq!(holding.net_invested, Some(Decimal::from(300)));
+    assert_eq!(holding.recorded_net_spending, Some(Decimal::from(300)));
     assert_eq!(holding.remaining_cost_basis, Some(Decimal::from(480)));
     assert_eq!(holding.unrealized_pnl, Some(Decimal::from(120)));
     assert_eq!(holding.realized_pnl, Some(Decimal::from(180)));

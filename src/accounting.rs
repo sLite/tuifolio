@@ -3,9 +3,12 @@ use std::collections::{BTreeMap, HashMap};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
-use crate::model::{Asset, AssetKind, Id, Portfolio, Price, StoreData, Transaction};
+use crate::model::{Asset, AssetKind, Id, Portfolio, Price, StoreData};
 
 mod basis;
+mod spending;
+
+use spending::recorded_net_spending;
 
 #[derive(Debug, Clone)]
 pub struct HoldingRow {
@@ -17,7 +20,7 @@ pub struct HoldingRow {
     pub kind: AssetKind,
     pub quantity: Decimal,
     pub value: Option<Decimal>,
-    pub net_invested: Option<Decimal>,
+    pub recorded_net_spending: Option<Decimal>,
     pub remaining_cost_basis: Option<Decimal>,
     pub realized_pnl: Option<Decimal>,
     pub unrealized_pnl: Option<Decimal>,
@@ -90,7 +93,8 @@ pub fn build_report(data: &StoreData) -> Report {
             continue;
         };
         let value = value_in_base(data, asset, quantity, &base, &latest_prices, &asset_map);
-        let net_invested = net_invested(data, portfolio_id, asset_id, &base, &asset_map);
+        let recorded_net_spending =
+            recorded_net_spending(data, portfolio_id, asset_id, &base, &asset_map);
         let remaining_cost_basis = positions
             .get(&(portfolio_id, asset_id))
             .and_then(|p| p.basis);
@@ -110,7 +114,7 @@ pub fn build_report(data: &StoreData) -> Report {
             kind: asset.kind,
             quantity,
             value,
-            net_invested,
+            recorded_net_spending,
             remaining_cost_basis,
             realized_pnl,
             unrealized_pnl,
@@ -362,87 +366,6 @@ fn unique_currency_asset<'a>(symbol: &str, assets: &'a HashMap<Id, &Asset>) -> O
     crate::currencies::currency_asset_from(assets.values().copied(), symbol)
 }
 
-enum CostBasisChange {
-    Unrecorded,
-    Recorded(Decimal),
-}
-
-fn net_invested(
-    data: &StoreData,
-    portfolio_id: Id,
-    asset_id: Id,
-    base: &str,
-    assets: &HashMap<Id, &Asset>,
-) -> Option<Decimal> {
-    let mut invested = Decimal::ZERO;
-    let mut seen = false;
-    for transaction in &data.transactions {
-        if transaction.portfolio_id != portfolio_id || transaction.base_asset_id != asset_id {
-            continue;
-        }
-        if let CostBasisChange::Recorded(amount) =
-            cost_basis_change(data, transaction, base, assets)?
-        {
-            invested += amount;
-            seen = true;
-        }
-    }
-    seen.then_some(invested)
-}
-
-fn cost_basis_change(
-    data: &StoreData,
-    transaction: &Transaction,
-    base: &str,
-    assets: &HashMap<Id, &Asset>,
-) -> Option<CostBasisChange> {
-    if transaction.kind.has_implicit_zero_cost_basis() {
-        return Some(CostBasisChange::Recorded(Decimal::ZERO));
-    }
-    if !transaction.kind.supports_quote()
-        || transaction.quote_asset_id.is_none()
-        || transaction.quote_amount.is_none()
-    {
-        return Some(CostBasisChange::Unrecorded);
-    }
-    let value = transaction_quote_value(data, transaction, base, assets)?;
-    Some(CostBasisChange::Recorded(
-        -transaction.kind.quote_cash_delta(value),
-    ))
-}
-
-fn transaction_quote_value(
-    data: &StoreData,
-    transaction: &Transaction,
-    base: &str,
-    assets: &HashMap<Id, &Asset>,
-) -> Option<Decimal> {
-    let amount = transaction.quote_amount?;
-    let asset = assets.get(&transaction.quote_asset_id?)?;
-    if amount.is_zero() {
-        return Some(Decimal::ZERO);
-    }
-    let amount =
-        crate::ledger::split_adjusted_amount(data, asset.id, transaction.timestamp, amount).ok()?;
-    if currency_identity(data, asset, base) {
-        return Some(amount);
-    }
-    // A recorded trade into the reporting currency establishes its execution
-    // conversion without needing an unrelated current market observation.
-    let primary = assets.get(&transaction.base_asset_id)?;
-    if currency_identity(data, primary, base) && transaction.base_amount > Decimal::ZERO {
-        return crate::ledger::split_adjusted_amount(
-            data,
-            primary.id,
-            transaction.timestamp,
-            transaction.base_amount,
-        )
-        .ok();
-    }
-    let historical_prices = prices_at(data, transaction.timestamp);
-    value_in_base(data, asset, amount, base, &historical_prices, assets)
-}
-
 fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow> {
     data.portfolios
         .iter()
@@ -516,8 +439,4 @@ fn pnl_total<'a>(holdings: impl Iterator<Item = &'a HoldingRow>) -> (Option<Deci
         }
     }
     ((known || unresolved == 0).then_some(total), unresolved)
-}
-
-pub fn now() -> DateTime<Utc> {
-    Utc::now()
 }

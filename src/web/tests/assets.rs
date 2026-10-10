@@ -1,5 +1,5 @@
 use super::fixture::{TestApp, configure_asset, html};
-use crate::model::{AssetKind, AssetMetadataSource};
+use crate::model::AssetKind;
 use axum::http::StatusCode;
 
 #[tokio::test]
@@ -67,7 +67,6 @@ async fn asset_updates_preserve_references_and_are_visible_in_transaction_choice
     let data = fixture.persisted();
     let asset = data.assets.iter().find(|asset| asset.id == btc).unwrap();
     assert_eq!(asset.name, "Bitcoin edited");
-    assert_eq!(asset.metadata_source, AssetMetadataSource::User);
     assert_eq!(
         serde_json::to_value(&data.transactions).unwrap(),
         serde_json::to_value(&original.transactions).unwrap()
@@ -120,7 +119,6 @@ async fn clears_provider_symbols_without_defaults_being_reapplied() {
     let asset = data.assets.iter().find(|asset| asset.id == btc).unwrap();
     assert!(asset.yahoo_symbol.is_none());
     assert!(asset.tradingview_symbol.is_none());
-    assert_eq!(asset.metadata_source, AssetMetadataSource::User);
     let page = html(fixture.get(&format!("/assets/{btc}")).await, StatusCode::OK).await;
     assert!(!page.contains("TradingView chart"));
     assert!(page.contains("name=\"yahoo_symbol\" value=\"\""));

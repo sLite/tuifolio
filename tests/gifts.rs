@@ -6,7 +6,7 @@ use tuifolio::{
     accounting::{HoldingRow, build_report},
     assets::{AssetInput, save_asset},
     model::{AssetKind, Id, LedgerEffect, LedgerRole, StockSplit, TransactionKind},
-    price_sync::add_manual_price,
+    price_sync::add_manual_price_for_asset,
     store::Store,
     transactions::{
         ManualTransactionInput, add_manual_transaction, delete_transaction, update_transaction,
@@ -93,7 +93,7 @@ fn gifts_record_incoming_quantity_and_implicit_zero_cost_without_a_quote_currenc
     assert_eq!(transaction.quote_ledger_effect, LedgerEffect::Ignore);
     assert_eq!(fixture.store.data.ledger_entries.len(), 1);
     assert_eq!(fixture.holding().quantity, Decimal::from(350));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
+    assert_eq!(fixture.holding().recorded_net_spending, Some(Decimal::ZERO));
     assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(350)));
     assert!(fixture.store.data.prices.is_empty());
 }
@@ -110,7 +110,10 @@ fn gifts_do_not_erase_costs_from_paid_acquisitions_of_the_same_asset() {
     add_manual_transaction(&mut fixture.store, paid).unwrap();
     fixture.record();
     assert_eq!(fixture.holding().value, Some(Decimal::from(400)));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(40)));
+    assert_eq!(
+        fixture.holding().recorded_net_spending,
+        Some(Decimal::from(40))
+    );
     assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(360)));
 }
 
@@ -131,9 +134,9 @@ fn gifts_establish_zero_cost_only_for_their_own_portfolio_and_asset() {
     for holding in report.holdings.iter().filter(|holding| {
         holding.portfolio_id != fixture.portfolio || holding.asset_id != fixture.asset
     }) {
-        assert_eq!(holding.net_invested, None);
+        assert_eq!(holding.recorded_net_spending, None);
     }
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
+    assert_eq!(fixture.holding().recorded_net_spending, Some(Decimal::ZERO));
     assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350)));
 }
 
@@ -149,7 +152,7 @@ fn gift_fees_post_separately_from_the_implicit_zero_quote() {
     assert!(matches!(fee.role, LedgerRole::Fee));
     assert_eq!(fee.asset_id, fixture.cash);
     assert_eq!(fee.quantity_delta, Decimal::from(-2));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
+    assert_eq!(fixture.holding().recorded_net_spending, Some(Decimal::ZERO));
     assert_eq!(
         fixture.holding().remaining_cost_basis,
         Some(Decimal::from(2))
@@ -172,12 +175,8 @@ fn changing_a_paid_acquisition_to_gift_removes_its_quote_and_preserves_identity(
     let gift = fixture.input();
     update_transaction(&mut fixture.store, id, gift).unwrap();
     assert_eq!(fixture.store.data.transactions[0].id, previous.id);
-    assert_eq!(
-        fixture.store.data.transactions[0].source_row_hash,
-        previous.source_row_hash
-    );
     assert_eq!(fixture.store.data.ledger_entries.len(), 1);
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
+    assert_eq!(fixture.holding().recorded_net_spending, Some(Decimal::ZERO));
 }
 
 #[test]
@@ -187,7 +186,7 @@ fn changing_a_gift_to_an_unquoted_movement_restores_unknown_cost_basis() {
     let mut input = fixture.input();
     input.kind = TransactionKind::AssetIncrease;
     update_transaction(&mut fixture.store, id, input).unwrap();
-    assert_eq!(fixture.holding().net_invested, None);
+    assert_eq!(fixture.holding().recorded_net_spending, None);
     assert_eq!(fixture.holding().unrealized_pnl, None);
 }
 
@@ -202,7 +201,7 @@ fn gifts_survive_save_and_reopen_with_zero_cost_basis_and_no_cash_entry() {
     assert_eq!(reopened.data.transactions[0].kind, TransactionKind::Gift);
     assert_eq!(reopened.data.ledger_entries.len(), 1);
     assert_eq!(
-        build_report(&reopened.data).holdings[0].net_invested,
+        build_report(&reopened.data).holdings[0].recorded_net_spending,
         Some(Decimal::ZERO)
     );
 }
@@ -224,11 +223,11 @@ fn gifted_stock_quantities_follow_split_adjustments_and_market_valuation() {
         .unwrap()
         .with_timezone(&chrono::Utc);
     add_manual_transaction(&mut fixture.store, input).unwrap();
-    add_manual_price(&mut fixture.store, "ABC", Decimal::from(100), "EUR").unwrap();
+    add_manual_price_for_asset(&mut fixture.store, stock, Decimal::from(100), "EUR").unwrap();
     let report = build_report(&fixture.store.data);
     let holding = &report.holdings[0];
     assert_eq!(holding.quantity, Decimal::from(20));
-    assert_eq!(holding.net_invested, Some(Decimal::ZERO));
+    assert_eq!(holding.recorded_net_spending, Some(Decimal::ZERO));
     assert_eq!(holding.unrealized_pnl, Some(Decimal::from(2000)));
 }
 

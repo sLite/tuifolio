@@ -55,7 +55,13 @@ async fn invalid_stored_usd_configuration_returns_actionable_errors_without_chan
                 .find(|asset| asset.symbol == "USD")
                 .unwrap()
                 .kind = AssetKind::Crypto;
-            crate::price_sync::add_manual_price(store, "EUR", rust_decimal::Decimal::ONE, "USD")
+            let euro = store.asset_by_symbol("EUR").unwrap().id;
+            crate::price_sync::add_manual_price_for_asset(
+                store,
+                euro,
+                rust_decimal::Decimal::ONE,
+                "USD",
+            )
         })
         .await
         .unwrap();

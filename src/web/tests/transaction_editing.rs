@@ -83,7 +83,6 @@ async fn editing_preserves_id_and_origin_and_persists_rebuilt_balances() {
     let updated = &data.transactions[0];
     assert_eq!(updated.id, previous.id);
     assert_eq!(updated.base_amount, dec!(0.333333333333333333));
-    assert_eq!(updated.source_row_hash, previous.source_row_hash);
     assert_eq!(updated.source, previous.source);
     assert_eq!(data.transactions.len(), 2);
     assert_eq!(
@@ -350,12 +349,11 @@ async fn invalid_unchanged_records_must_be_corrected_before_editing() {
 }
 
 #[tokio::test]
-async fn automatic_metadata_flags_do_not_infer_provider_symbols_in_the_editor() {
+async fn blank_provider_symbols_stay_blank_in_the_editor() {
     let fixture = TestApp::with_assets();
     fixture
         .state
         .edit(|store| {
-            store.data.assets[0].metadata_source = crate::model::AssetMetadataSource::Automatic;
             store.data.assets[0].yahoo_symbol = None;
             store.data.assets[0].tradingview_symbol = None;
             Ok(())

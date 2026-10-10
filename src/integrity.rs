@@ -59,8 +59,10 @@ pub fn validate_store(data: &StoreData) -> anyhow::Result<()> {
                 transaction.id
             );
             anyhow::ensure!(
-                transaction.base_amount > Decimal::ZERO && transaction.quote_amount.is_none(),
-                "staking reward {} needs positive quantity and no quote payment",
+                transaction.base_amount > Decimal::ZERO
+                    && transaction.quote_asset_id.is_none()
+                    && transaction.quote_amount.is_none(),
+                "staking reward {} needs positive quantity and no quote fields",
                 transaction.id
             );
             anyhow::ensure!(
@@ -154,14 +156,10 @@ pub fn validate_store(data: &StoreData) -> anyhow::Result<()> {
             "duplicate reporting currency {code}"
         );
     }
-    for code in [
-        &data.config.default_base_currency,
-        &data.config.selected_base_currency,
-    ] {
-        anyhow::ensure!(
-            currencies.contains(code),
-            "reporting currency {code} is not configured"
-        );
-    }
+    let selected = &data.config.selected_base_currency;
+    anyhow::ensure!(
+        currencies.contains(selected),
+        "reporting currency {selected} is not configured"
+    );
     Ok(())
 }

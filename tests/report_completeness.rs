@@ -1,21 +1,17 @@
 pub mod support;
 
-use std::{path::PathBuf, process::Command};
-
 use rust_decimal::Decimal;
-use support::{create_asset, create_portfolio};
+use support::{create_asset, create_portfolio, temp_store};
 use tuifolio::{
     accounting::build_report,
     assets::{AssetInput, save_asset},
-    model::{AssetKind, Id, LedgerEffect, Price, TransactionKind},
-    price_sync::add_manual_price,
+    model::{AssetKind, Id, LedgerEffect, TransactionKind},
+    price_sync::add_manual_price_for_asset,
     store::Store,
     transactions::{ManualTransactionInput, add_manual_transaction},
 };
 
 struct Fixture {
-    directory: tempfile::TempDir,
-    path: PathBuf,
     store: Store,
     portfolio: Id,
     euro: Id,
@@ -23,14 +19,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("store.json");
-        let mut store = Store::open(Some(path.clone())).unwrap();
+        let mut store = temp_store();
         let portfolio = create_portfolio(&mut store, "Main");
         let euro = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
         Self {
-            directory,
-            path,
             store,
             portfolio,
             euro,
@@ -74,30 +66,6 @@ impl Fixture {
         )
         .unwrap();
     }
-
-    fn cli(self, commands: &[&str]) -> Vec<String> {
-        self.store.save().unwrap();
-        drop(self.store);
-        let original = std::fs::read(&self.path).unwrap();
-        let output = commands
-            .iter()
-            .map(|command| {
-                let output = Command::new(env!("CARGO_BIN_EXE_tuifolio"))
-                    .args(["--store", self.path.to_str().unwrap(), command])
-                    .output()
-                    .unwrap();
-                assert!(
-                    output.status.success(),
-                    "{}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                assert_eq!(std::fs::read(&self.path).unwrap(), original);
-                String::from_utf8(output.stdout).unwrap()
-            })
-            .collect();
-        drop(self.directory);
-        output
-    }
 }
 
 #[test]
@@ -129,8 +97,8 @@ fn unvalued_cash_and_both_market_and_intrinsic_debt_count_until_rates_are_suppli
     }
     assert_eq!(serde_json::to_value(&fixture.store.data).unwrap(), original);
 
-    add_manual_price(&mut fixture.store, "USD", Decimal::new(9, 1), "EUR").unwrap();
-    add_manual_price(&mut fixture.store, "DEBT", Decimal::ONE, "EUR").unwrap();
+    add_manual_price_for_asset(&mut fixture.store, usd, Decimal::new(9, 1), "EUR").unwrap();
+    add_manual_price_for_asset(&mut fixture.store, debt, Decimal::ONE, "EUR").unwrap();
     let report = build_report(&fixture.store.data);
     assert_eq!(report.portfolios[0].unresolved, 0);
     assert!(
@@ -182,67 +150,11 @@ fn a_recorded_zero_market_value_is_available_and_has_known_zero_pnl() {
     let mut fixture = Fixture::new();
     let asset = fixture.asset("WORTHLESS", AssetKind::Stock, None);
     fixture.post(asset, TransactionKind::Gift, 10, None);
-    // Stored zero observations can already exist; manual zero-price support is finding 16.
-    fixture.store.data.prices.push(Price {
-        asset_id: asset,
-        timestamp: chrono::Utc::now(),
-        price: Decimal::ZERO,
-        currency: "EUR".into(),
-        source: "fixture".into(),
-    });
+    add_manual_price_for_asset(&mut fixture.store, asset, Decimal::ZERO, "EUR").unwrap();
     let report = build_report(&fixture.store.data);
     assert_eq!(report.holdings[0].value, Some(Decimal::ZERO));
     assert!(!report.holdings[0].missing_valuation);
     assert_eq!(report.portfolios[0].unresolved, 0);
     assert_eq!(report.portfolios[0].unresolved_pnl, 0);
     assert_eq!(report.total_unrealized_pnl, Some(Decimal::ZERO));
-}
-
-#[test]
-fn cli_summary_and_missing_prices_include_unvalued_cash_and_liabilities_without_saving() {
-    let mut fixture = Fixture::new();
-    let usd = fixture.asset("USD", AssetKind::Fiat, None);
-    let debt = fixture.asset("DEBT", AssetKind::Liability, None);
-    let unknown = fixture.asset("UNKNOWN", AssetKind::Custom, Some("EUR"));
-    fixture.post(fixture.euro, TransactionKind::Deposit, 1000, None);
-    fixture.post(usd, TransactionKind::Deposit, 100, None);
-    fixture.post(debt, TransactionKind::LiabilityIncrease, 20, None);
-    fixture.post(unknown, TransactionKind::AssetIncrease, 100, None);
-    let output = fixture.cli(&["summary", "missing-prices"]);
-    assert!(output[0].contains("Assets (partial): 1100.00"));
-    assert!(output[0].contains("Liabilities (partial): 0.00"));
-    assert!(output[0].contains("Net worth (partial): 1100.00"));
-    assert!(output[0].contains("Unrealized PnL: Unavailable"));
-    assert!(output[0].contains("2 holdings have no valuation"));
-    assert!(output[0].contains("missing=2 pnl_missing=1"));
-    assert!(output[1].contains("Main USD (Fiat)"));
-    assert!(output[1].contains("Main DEBT (Liability)"));
-    assert!(!output[1].contains("EUR"));
-    assert!(!output[1].contains("UNKNOWN"));
-}
-
-#[test]
-fn cli_distinguishes_unknown_partial_and_complete_zero_pnl() {
-    for (known, unknown, expected) in [
-        (false, true, "Unrealized PnL: Unavailable"),
-        (true, true, "Unrealized PnL: 0.00 (partial)"),
-        (true, false, "Unrealized PnL: 0.00\n"),
-    ] {
-        let mut fixture = Fixture::new();
-        if known {
-            let asset = fixture.asset("KNOWN", AssetKind::Custom, Some("EUR"));
-            fixture.post(asset, TransactionKind::AssetIncrease, 100, Some(100));
-        }
-        if unknown {
-            let asset = fixture.asset("UNKNOWN", AssetKind::Custom, Some("EUR"));
-            fixture.post(asset, TransactionKind::AssetIncrease, 100, None);
-        }
-        let output = fixture.cli(&["summary"]);
-        assert!(output[0].contains(expected), "{}", output[0]);
-        assert_eq!(
-            output[0].contains("investment holdings have unavailable PnL"),
-            unknown
-        );
-        assert!(!output[0].contains("Net worth (partial)"));
-    }
 }

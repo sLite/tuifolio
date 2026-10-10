@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -86,15 +84,6 @@ pub struct Asset {
     pub tradingview_symbol: Option<String>,
     #[serde(default)]
     pub valuation_currency: Option<String>,
-    #[serde(default)]
-    pub metadata_source: AssetMetadataSource,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AssetMetadataSource {
-    #[default]
-    Automatic,
-    User,
 }
 
 impl Asset {
@@ -136,7 +125,6 @@ pub struct Transaction {
     pub broker: Option<String>,
     pub notes: Option<String>,
     pub source: String,
-    pub source_row_hash: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -176,7 +164,6 @@ pub struct Price {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub base_currencies: Vec<String>,
-    pub default_base_currency: String,
     pub selected_base_currency: String,
     #[serde(default)]
     pub stock_splits: Vec<StockSplit>,
@@ -197,7 +184,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             base_currencies: vec!["EUR".into(), "USD".into(), "BTC".into(), "ETH".into()],
-            default_base_currency: "EUR".into(),
             selected_base_currency: "EUR".into(),
             stock_splits: Vec::new(),
         }
@@ -211,9 +197,10 @@ pub struct StoreData {
     pub portfolios: Vec<Portfolio>,
     pub assets: Vec<Asset>,
     pub transactions: Vec<Transaction>,
+    // Derived from transactions and splits, never read from or written to JSON.
+    #[serde(skip)]
     pub ledger_entries: Vec<LedgerEntry>,
     pub prices: Vec<Price>,
-    pub raw_rows: BTreeMap<String, String>,
 }
 
 impl Default for StoreData {
@@ -226,7 +213,6 @@ impl Default for StoreData {
             transactions: Vec::new(),
             ledger_entries: Vec::new(),
             prices: Vec::new(),
-            raw_rows: BTreeMap::new(),
         }
     }
 }

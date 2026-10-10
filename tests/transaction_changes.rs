@@ -103,8 +103,8 @@ fn updating_replaces_ledger_effects_and_keeps_the_transaction_identity_and_origi
     assert_eq!(fixture.store.data.transactions.len(), 1);
     let updated = &fixture.store.data.transactions[0];
     assert_eq!(
-        (updated.id, &updated.source, &updated.source_row_hash),
-        (previous.id, &previous.source, &previous.source_row_hash)
+        (updated.id, &updated.source),
+        (previous.id, &previous.source)
     );
     assert_eq!(fixture.store.data.next_id, next_id);
     assert_moved_balances(&fixture, &previous);
@@ -282,20 +282,13 @@ fn unchanged_invalid_amounts_require_correction_regardless_of_origin() {
 }
 
 #[test]
-fn invalid_historical_records_can_be_deleted_without_rewriting_preserved_raw_rows() {
+fn invalid_historical_records_can_be_deleted() {
     let mut fixture = Fixture::new();
     invalidate(
         &mut fixture.store.data.transactions[0],
         InvalidAmount::ZeroBase,
     );
-    fixture
-        .store
-        .data
-        .raw_rows
-        .insert("old-row".into(), "historical payload".into());
-    let rows = fixture.store.data.raw_rows.clone();
     delete_transaction(&mut fixture.store, fixture.id).unwrap();
     assert!(fixture.store.data.transactions.is_empty());
-    assert_eq!(fixture.store.data.raw_rows, rows);
 }
 pub mod support;

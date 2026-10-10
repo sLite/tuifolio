@@ -70,7 +70,7 @@ impl PropertyFixture {
         assert_eq!(data.ledger_entries.len(), 1);
         assert_eq!(data.ledger_entries[0].asset_id, self.asset_id);
         let report = build_report(&data);
-        assert_eq!(report.holdings[0].net_invested, Some(dec!(0)));
+        assert_eq!(report.holdings[0].recorded_net_spending, Some(dec!(0)));
         assert_eq!(report.holdings[0].unrealized_pnl, Some(dec!(350)));
     }
 
@@ -97,7 +97,7 @@ impl PropertyFixture {
             .find(|holding| holding.asset_id == self.asset_id)
             .unwrap();
         assert_eq!(holding.value, Some(value.into()));
-        assert_eq!(holding.net_invested, Some(invested.into()));
+        assert_eq!(holding.recorded_net_spending, Some(invested.into()));
         assert_eq!(holding.unrealized_pnl, Some(pnl.into()));
     }
 }
@@ -136,7 +136,7 @@ async fn editing_unknown_basis_to_zero_preserves_the_transaction_and_creates_no_
         .await;
     let previous = fixture.app.persisted().transactions[0].clone();
     assert_eq!(
-        build_report(&fixture.app.persisted()).holdings[0].net_invested,
+        build_report(&fixture.app.persisted()).holdings[0].recorded_net_spending,
         None
     );
     let path = format!("/transactions/{}/edit", previous.id);
@@ -148,7 +148,6 @@ async fn editing_unknown_basis_to_zero_preserves_the_transaction_and_creates_no_
         let updated = &fixture.app.persisted().transactions[0];
         assert_eq!(updated.id, previous.id);
         assert_eq!(updated.source, previous.source);
-        assert_eq!(updated.source_row_hash, previous.source_row_hash);
     }
 }
 
@@ -216,7 +215,7 @@ async fn posted_asset_increase_quotes_deduct_cash_and_persist_the_cost_basis() {
 }
 
 #[tokio::test]
-async fn posted_asset_decrease_quotes_add_cash_and_subtract_proceeds_from_net_invested() {
+async fn posted_asset_decrease_quotes_add_cash_and_subtract_proceeds_from_recorded_net_spending() {
     let fixture = PropertyFixture::new().await;
     let purchase = fixture.body(AssetIncrease, 500, "420", Ignore);
     fixture.app.post("/transactions/new", &purchase).await;
@@ -252,7 +251,6 @@ async fn editing_the_asset_quote_cash_effect_updates_cash_and_preserves_the_reco
     );
     let updated = &fixture.app.persisted().transactions[0];
     assert_eq!(updated.id, previous.id);
-    assert_eq!(updated.source_row_hash, previous.source_row_hash);
     assert_eq!(updated.quote_ledger_effect, Post);
     fixture.assert_pnl(500, 420, 80);
     assert_eq!(fixture.cash_balance(), dec!(-420));

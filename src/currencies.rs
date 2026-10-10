@@ -74,7 +74,7 @@ pub fn normalize_reporting_currency(data: &StoreData, value: &str) -> anyhow::Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Asset, AssetMetadataSource};
+    use crate::model::Asset;
 
     #[test]
     fn normalizes_supported_currencies_without_requiring_cash_holdings() {
@@ -98,7 +98,6 @@ mod tests {
             yahoo_symbol: None,
             tradingview_symbol: None,
             valuation_currency: None,
-            metadata_source: AssetMetadataSource::User,
         };
         data.assets.push(coin.clone());
         assert!(currency_asset(&data, "GBP").is_none());
@@ -121,7 +120,6 @@ mod tests {
             yahoo_symbol: None,
             tradingview_symbol: None,
             valuation_currency: None,
-            metadata_source: AssetMetadataSource::User,
         };
         data.assets.push(asset);
         assert!(normalize_reporting_currency(&data, "COIN").is_err());

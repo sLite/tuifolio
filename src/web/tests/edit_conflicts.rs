@@ -228,7 +228,8 @@ async fn unrelated_edits_and_price_updates_do_not_invalidate_record_versions() {
         .edit(|store| {
             store.data.config.selected_base_currency = "USD".into();
             store.data.transactions[1].notes = Some("Unrelated deposit edit".into());
-            crate::price_sync::add_manual_price(store, "USD", dec!(0.92), "EUR")
+            let usd = store.asset_by_symbol("USD").unwrap().id;
+            crate::price_sync::add_manual_price_for_asset(store, usd, dec!(0.92), "EUR")
         })
         .await
         .unwrap();

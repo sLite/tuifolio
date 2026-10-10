@@ -141,7 +141,7 @@ async fn worthless_market_holding_can_be_marked_zero_without_losing_its_history(
     use crate::{
         assets::{AssetInput, save_asset},
         model::AssetKind,
-        price_sync::add_manual_price,
+        price_sync::add_manual_price_for_asset,
     };
     let fixture = TestApp::with_assets();
     let id = fixture
@@ -174,7 +174,7 @@ async fn worthless_market_holding_can_be_marked_zero_without_losing_its_history(
     );
     fixture
         .state
-        .edit(|store| add_manual_price(store, "WORTHLESS", dec!(100), "EUR"))
+        .edit(move |store| add_manual_price_for_asset(store, id, dec!(100), "EUR"))
         .await
         .unwrap();
     let transactions = serde_json::to_value(fixture.persisted().transactions).unwrap();
@@ -262,7 +262,7 @@ async fn dated_prices_restore_historical_basis_and_rejected_dates_preserve_draft
             .iter()
             .find(|h| h.symbol == "BTC")
             .unwrap()
-            .net_invested
+            .recorded_net_spending
             .is_some()
     );
 }

@@ -14,7 +14,7 @@ use crate::{
     assets::{AssetInput, save_asset},
     model::{AssetKind, Id, Price, StoreData},
     portfolios::{PortfolioInput, create_portfolio},
-    price_sync::add_manual_price,
+    price_sync::add_manual_price_for_asset,
     store::Store,
     transactions::add_manual_transaction,
 };
@@ -93,7 +93,10 @@ impl TestApp {
     }
 
     pub fn persisted(&self) -> StoreData {
-        serde_json::from_reader(std::fs::File::open(&self.path).unwrap()).unwrap()
+        let mut data = serde_json::from_reader(std::fs::File::open(&self.path).unwrap()).unwrap();
+        crate::integrity::validate_store(&data).unwrap();
+        crate::ledger::rebuild_ledger(&mut data).unwrap();
+        data
     }
 
     pub async fn asset_id(&self, symbol: &str) -> Id {
@@ -196,7 +199,8 @@ fn seed_prices(store: &mut Store) {
         currency: "EUR".into(),
         source: "yahoo".into(),
     });
-    add_manual_price(store, "USD", dec!(0.9), "EUR").unwrap();
+    let usd = asset_id(&store.data, "USD");
+    add_manual_price_for_asset(store, usd, dec!(0.9), "EUR").unwrap();
 }
 
 pub(super) fn buy_form(data: &StoreData) -> TransactionForm {

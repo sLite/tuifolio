@@ -41,7 +41,6 @@ fn transaction(id: Id, time: &str) -> Transaction {
         broker: None,
         notes: None,
         source: "synthetic".into(),
-        source_row_hash: format!("synthetic:{id}"),
     }
 }
 fn snapshot(
@@ -377,37 +376,6 @@ fn compaction_preserves_conversion_basis_realized_and_unrealized_in_four_bases_a
     let reopened = Store::open(Some(p)).unwrap();
     assert_eq!(serde_json::to_value(&reopened.data).unwrap(), expected);
     assert_eq!(reports(&reopened.data), before);
-}
-
-#[test]
-fn cli_successful_refresh_compacts_and_saves_without_provider_requests() {
-    use support::{create_asset, temp_store};
-    let mut s = temp_store();
-    let id = create_asset(&mut s, "HOUSE", "Property", AssetKind::Property);
-    for time in [
-        "2020-01-01T01:00:00Z",
-        "2020-01-01T09:00:00Z",
-        "2020-01-01T23:00:00Z",
-    ] {
-        s.data.prices.push(price(id, time, "EUR", dec!(10)));
-    }
-    s.save().unwrap();
-    let mut expected = serde_json::to_value(&s.data).unwrap();
-    expected["prices"] = serde_json::json!([s.data.prices.last().unwrap()]);
-    let path = s.path().clone();
-    drop(s);
-    // A Property with no Yahoo mapping requests no quotes or FX.
-    let result = std::process::Command::new(env!("CARGO_BIN_EXE_tuifolio"))
-        .args(["--store", path.to_str().unwrap(), "sync-prices"])
-        .output()
-        .unwrap();
-    assert!(result.status.success(), "{:?}", result);
-    let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    assert_eq!(actual, expected);
-    assert_eq!(
-        serde_json::to_value(Store::open(Some(path)).unwrap().data).unwrap(),
-        expected
-    );
 }
 
 #[test]

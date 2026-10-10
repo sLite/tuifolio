@@ -127,12 +127,7 @@ async fn forged_quote_fields_are_rejected_for_non_quoted_types() {
         format!("&quote_asset_id={eur}&quote_amount=0"),
         "&quote_amount=100".into(),
     ];
-    // Staking rewards separately preserve supported deposit quote-asset metadata.
-    // They reject quote payments, covered by staking_rewards tests.
-    for kind in NON_QUOTED_KINDS
-        .into_iter()
-        .filter(|kind| *kind != "StakingReward")
-    {
+    for kind in NON_QUOTED_KINDS {
         for quote in &quotes {
             let body = body(&fixture, kind) + quote;
             let page = html(
@@ -165,11 +160,10 @@ async fn changing_a_trade_to_deposit_clears_omitted_quote_fields() {
     let data = fixture.persisted();
     let updated = &data.transactions[0];
     assert_eq!(updated.id, previous.id);
-    assert_eq!(updated.source_row_hash, previous.source_row_hash);
     assert_eq!(updated.kind, TransactionKind::Deposit);
     assert_eq!(updated.quote_asset_id, None);
     assert_eq!(updated.quote_amount, None);
-    assert_eq!(build_report(&data).holdings[0].net_invested, None);
+    assert_eq!(build_report(&data).holdings[0].recorded_net_spending, None);
 }
 
 #[tokio::test]
@@ -200,7 +194,7 @@ async fn historical_unsupported_quotes_have_no_cash_effect_label_or_pnl_basis() 
         .iter()
         .find(|holding| holding.symbol == "BTC")
         .unwrap();
-    assert_eq!(btc.net_invested, None);
+    assert_eq!(btc.recorded_net_spending, None);
     assert_eq!(btc.unrealized_pnl, None);
 }
 

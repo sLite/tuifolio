@@ -17,7 +17,6 @@ fn fixture() -> StoreData {
         yahoo_symbol: None,
         tradingview_symbol: None,
         valuation_currency: None,
-        metadata_source: AssetMetadataSource::User,
     });
     data.transactions.push(Transaction {
         id: 3,
@@ -35,7 +34,6 @@ fn fixture() -> StoreData {
         broker: None,
         notes: None,
         source: "historical".into(),
-        source_row_hash: "historical:3".into(),
     });
     tuifolio::ledger::rebuild_ledger(&mut data).unwrap();
     data

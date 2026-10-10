@@ -3,7 +3,7 @@ use rust_decimal_macros::dec;
 use tuifolio::{
     accounting::build_report,
     assets::{AssetInput, save_asset},
-    model::{Asset, AssetKind, AssetMetadataSource, Id, LedgerEffect, Price, TransactionKind},
+    model::{Asset, AssetKind, Id, LedgerEffect, Price, TransactionKind},
     price_sync::{PriceBatch, SyncSummary, fetch_prices, merge_price_batch},
     store::Store,
     transactions::{ManualTransactionInput, add_manual_transaction},
@@ -146,7 +146,6 @@ fn cleared_provider_settings_survive_reopen_transactions_and_price_refresh() {
     let mut fixture = fixture.reopen();
     let input = stock_transaction(&fixture.store);
     add_manual_transaction(&mut fixture.store, input).unwrap();
-    assert_eq!(fixture.asset().metadata_source, AssetMetadataSource::User);
     assert!(fixture.asset().yahoo_symbol.is_none());
     assert!(fixture.asset().tradingview_symbol.is_none());
     let batch = fetch_prices(&fixture.store.data).unwrap();

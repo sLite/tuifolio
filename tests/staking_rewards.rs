@@ -103,7 +103,7 @@ fn reward_zero_basis_and_full_value_pnl_work_in_every_reporting_currency() {
         let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
         assert_eq!(h.remaining_cost_basis, Some(dec!(0)));
         assert_eq!(h.unrealized_pnl, Some(value));
-        assert_eq!(h.net_invested, Some(dec!(0)));
+        assert_eq!(h.recorded_net_spending, Some(dec!(0)));
         assert_eq!(r.unresolved_pnl, 0);
     }
 }
@@ -123,7 +123,7 @@ fn rewards_add_units_without_increasing_paid_weighted_average_basis() {
     assert_eq!(h.quantity, dec!(4));
     assert_eq!(h.remaining_cost_basis, Some(dec!(10)));
     assert_eq!(h.unrealized_pnl, Some(dec!(50)));
-    assert_eq!(h.net_invested, Some(dec!(10)));
+    assert_eq!(h.recorded_net_spending, Some(dec!(10)));
     let mut sell = f.input(TransactionKind::Sell, dec!(1));
     sell.timestamp = "2020-06-04T00:00:00Z".parse().unwrap();
     sell.quote_asset_id = Some(f.eur);
@@ -159,7 +159,7 @@ fn missing_receipt_quotes_do_not_make_zero_basis_unknown() {
     let r = build_report(&f.store.data);
     let h = r.holdings.iter().find(|h| h.asset_id == f.sol).unwrap();
     assert_eq!(h.remaining_cost_basis, Some(dec!(0)));
-    assert_eq!(h.net_invested, Some(dec!(0)));
+    assert_eq!(h.recorded_net_spending, Some(dec!(0)));
     assert_eq!(h.value, None);
     assert_eq!(h.unrealized_pnl, None);
     f.mark();
@@ -241,7 +241,7 @@ fn third_investment_asset_fee_retains_its_own_basis_disposal() {
 fn noncrypto_rewards_payments_and_fully_consuming_fees_are_rejected_atomically() {
     let mut f = Fixture::new();
     let original = serde_json::to_value(&f.store.data).unwrap();
-    for variant in 0..3 {
+    for variant in 0..5 {
         let mut i = f.input(TransactionKind::StakingReward, dec!(2));
         match variant {
             0 => i.base_asset_id = f.eur,
@@ -249,6 +249,8 @@ fn noncrypto_rewards_payments_and_fully_consuming_fees_are_rejected_atomically()
                 i.quote_asset_id = Some(f.eur);
                 i.quote_amount = Some(dec!(2));
             }
+            2 => i.quote_asset_id = Some(f.eur),
+            3 => i.quote_amount = Some(dec!(0)),
             _ => {
                 i.fee_asset_id = Some(f.sol);
                 i.fee_amount = Some(dec!(2));
@@ -260,7 +262,7 @@ fn noncrypto_rewards_payments_and_fully_consuming_fees_are_rejected_atomically()
 }
 
 #[test]
-fn changing_only_kind_preserves_quantity_postings_and_ignored_quote_metadata() {
+fn changing_only_kind_preserves_quantity_postings_without_quote_fields() {
     let mut f = Fixture::new();
     let mut input = f.input(TransactionKind::Deposit, dec!(2));
     let id = add_manual_transaction(&mut f.store, input.clone())
@@ -268,13 +270,13 @@ fn changing_only_kind_preserves_quantity_postings_and_ignored_quote_metadata() {
         .transaction_id;
     let ledger = serde_json::to_value(&f.store.data.ledger_entries).unwrap();
     input.kind = TransactionKind::StakingReward;
-    input.quote_asset_id = Some(f.eur);
     update_transaction(&mut f.store, id, input).unwrap();
     assert_eq!(
         serde_json::to_value(&f.store.data.ledger_entries).unwrap(),
         ledger
     );
-    assert_eq!(f.store.data.transactions[0].quote_asset_id, Some(f.eur));
+    assert_eq!(f.store.data.transactions[0].quote_asset_id, None);
+    assert_eq!(f.store.data.transactions[0].quote_amount, None);
     assert_eq!(
         build_report(&f.store.data).holdings[0].remaining_cost_basis,
         Some(dec!(0))
@@ -282,16 +284,9 @@ fn changing_only_kind_preserves_quantity_postings_and_ignored_quote_metadata() {
 }
 
 #[test]
-fn saved_reward_reopens_without_rewriting_metadata_or_zero_basis() {
+fn saved_reward_reopens_without_quote_fields_and_retains_zero_basis() {
     let mut f = Fixture::new();
-    let id = f.reward();
-    f.store
-        .data
-        .transactions
-        .iter_mut()
-        .find(|t| t.id == id)
-        .unwrap()
-        .quote_asset_id = Some(f.eur);
+    f.reward();
     f.store.save().unwrap();
     let path = f.store.path().clone();
     let expected = serde_json::to_value(&f.store.data).unwrap();
@@ -302,6 +297,82 @@ fn saved_reward_reopens_without_rewriting_metadata_or_zero_basis() {
         build_report(&reopened.data).holdings[0].remaining_cost_basis,
         Some(dec!(0))
     );
+}
+
+type RewardQuoteFields = (Option<Id>, Option<Decimal>);
+
+fn forbidden_reward_quotes(asset: Id) -> [RewardQuoteFields; 4] {
+    [
+        (Some(asset), None),
+        (Some(asset), Some(dec!(0))),
+        (None, Some(dec!(0))),
+        (Some(asset), Some(dec!(2))),
+    ]
+}
+
+#[test]
+fn reward_edits_reject_quote_assets_and_amounts_without_changing_accounting() {
+    let mut f = Fixture::new();
+    let id = f.reward();
+    let original = serde_json::to_value(&f.store.data).unwrap();
+    let ledger = serde_json::to_value(&f.store.data.ledger_entries).unwrap();
+    for (asset, amount) in forbidden_reward_quotes(f.eur) {
+        let mut input = f.input(TransactionKind::StakingReward, dec!(2));
+        input.quote_asset_id = asset;
+        input.quote_amount = amount;
+        assert!(update_transaction(&mut f.store, id, input).is_err());
+        assert_eq!(serde_json::to_value(&f.store.data).unwrap(), original);
+        assert_eq!(
+            serde_json::to_value(&f.store.data.ledger_entries).unwrap(),
+            ledger
+        );
+    }
+}
+
+#[test]
+fn saves_reject_reward_quote_fields_without_rewriting_the_datastore() {
+    let mut f = Fixture::new();
+    f.reward();
+    f.store.save().unwrap();
+    let original = std::fs::read(f.store.path()).unwrap();
+    for (asset, amount) in forbidden_reward_quotes(f.eur) {
+        f.store.data.transactions[0].quote_asset_id = asset;
+        f.store.data.transactions[0].quote_amount = amount;
+        let error = f.store.save().unwrap_err();
+        assert!(format!("{error:#}").contains("no quote fields"));
+        assert_eq!(std::fs::read(f.store.path()).unwrap(), original);
+    }
+}
+
+#[test]
+fn loading_rejects_reward_quote_fields_without_rewriting_or_retaining_the_lock() {
+    let mut f = Fixture::new();
+    f.reward();
+    let mut value = serde_json::to_value(&f.store.data).unwrap();
+    let path = f.store.path().clone();
+    let cases = forbidden_reward_quotes(f.eur);
+    drop(f.store);
+    for (asset, amount) in cases {
+        value["transactions"][0]["quote_asset_id"] = serde_json::to_value(asset).unwrap();
+        value["transactions"][0]["quote_amount"] = amount
+            .map(|value| serde_json::json!(value.to_string()))
+            .unwrap_or_default();
+        assert_reward_store_rejected(&path, &value);
+    }
+    value["transactions"][0]["quote_asset_id"] = serde_json::Value::Null;
+    value["transactions"][0]["quote_amount"] = serde_json::Value::Null;
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(Store::open(Some(path)).is_ok());
+}
+
+fn assert_reward_store_rejected(path: &std::path::Path, value: &serde_json::Value) {
+    let original = serde_json::to_vec(value).unwrap();
+    std::fs::write(path, &original).unwrap();
+    for _ in 0..2 {
+        let error = Store::open(Some(path.to_path_buf())).err().unwrap();
+        assert!(format!("{error:#}").contains("no quote fields"));
+        assert_eq!(std::fs::read(path).unwrap(), original);
+    }
 }
 
 #[test]

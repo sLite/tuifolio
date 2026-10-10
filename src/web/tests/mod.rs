@@ -258,7 +258,7 @@ async fn base_currency_changes_persist_and_redirect_locally() {
 }
 
 #[tokio::test]
-async fn base_currency_validation_is_shared_with_cli_and_normalizes_identifiers() {
+async fn base_currency_validation_rejects_investments_and_normalizes_identifiers() {
     let fixture = TestApp::with_assets();
     let response = fixture
         .post("/base", "currency=%20usd%20&return_to=%2F")
@@ -270,6 +270,23 @@ async fn base_currency_validation_is_shared_with_cli_and_normalizes_identifiers(
     let page = html(response, StatusCode::UNPROCESSABLE_ENTITY).await;
     assert!(page.contains("unsupported reporting currency"));
     assert_eq!(std::fs::read(&fixture.path).unwrap(), before);
+}
+
+#[tokio::test]
+async fn base_selection_cannot_add_unconfigured_reporting_currencies() {
+    let fixture = TestApp::with_assets();
+    let original = std::fs::read(&fixture.path).unwrap();
+    for currency in ["GBP", "JPY"] {
+        let page = html(
+            fixture
+                .post("/base", &format!("currency={currency}&return_to=%2F"))
+                .await,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        )
+        .await;
+        assert!(page.contains("select a configured base currency"));
+        assert_eq!(std::fs::read(&fixture.path).unwrap(), original);
+    }
 }
 
 #[tokio::test]

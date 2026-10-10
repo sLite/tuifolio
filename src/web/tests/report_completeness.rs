@@ -6,7 +6,7 @@ use crate::{
     assets::{AssetInput, save_asset},
     model::{AssetKind, Id, LedgerEffect, TransactionKind},
     portfolios::{PortfolioInput, create_portfolio},
-    price_sync::add_manual_price,
+    price_sync::add_manual_price_for_asset,
     store::Store,
     transactions::{ManualTransactionInput, add_manual_transaction},
 };
@@ -245,7 +245,10 @@ async fn negative_foreign_cash_keeps_its_balance_warning_after_valuation_is_avai
     assert!(page.contains("1 non-liability holdings have negative balances"));
     fixture
         .state
-        .edit(|store| add_manual_price(store, "USD", Decimal::new(9, 1), "EUR"))
+        .edit(|store| {
+            let usd = store.asset_by_symbol("USD").unwrap().id;
+            add_manual_price_for_asset(store, usd, Decimal::new(9, 1), "EUR")
+        })
         .await
         .unwrap();
     let page = html(fixture.get("/").await, StatusCode::OK).await;

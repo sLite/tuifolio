@@ -110,7 +110,7 @@ fn dangling_store_symlinks_are_rejected_without_replacing_them() {
 }
 
 fn preservation_fixture() -> tuifolio::model::StoreData {
-    use tuifolio::model::{Asset, AssetKind, AssetMetadataSource, StockSplit};
+    use tuifolio::model::{Asset, AssetKind, StockSplit};
     let mut data = tuifolio::model::StoreData {
         next_id: 135,
         ..tuifolio::model::StoreData::default()
@@ -123,7 +123,6 @@ fn preservation_fixture() -> tuifolio::model::StoreData {
         yahoo_symbol: None,
         tradingview_symbol: None,
         valuation_currency: None,
-        metadata_source: AssetMetadataSource::Automatic,
     });
     data.config.stock_splits.push(StockSplit {
         asset_id: 134,
@@ -131,8 +130,6 @@ fn preservation_fixture() -> tuifolio::model::StoreData {
         numerator: rust_decimal::Decimal::from(4),
         denominator: rust_decimal::Decimal::ONE,
     });
-    data.raw_rows
-        .insert("old-hash".into(), "original payload".into());
     data
 }
 
@@ -227,7 +224,6 @@ fn stores_reject_removed_transaction_posting_flags_without_rewriting() {
         broker: None,
         notes: None,
         source: "manual".into(),
-        source_row_hash: format!("manual:{id}"),
     });
     for effect in ["Post", "Ignore"] {
         let mut legacy = serde_json::to_value(&data).unwrap();

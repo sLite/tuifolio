@@ -81,7 +81,6 @@ pub fn update_transaction(
     validate_input(&store.data, &input)?;
     let mut transaction = manual_transaction(id, input.portfolio_id, input);
     transaction.source = previous.source.clone();
-    transaction.source_row_hash = previous.source_row_hash.clone();
     let result = transaction_result(&transaction);
     let mut data = store.data.clone();
     data.transactions[index] = transaction;
@@ -136,7 +135,6 @@ fn manual_transaction(id: Id, portfolio_id: Id, input: ManualTransactionInput) -
         broker: clean_string(input.broker),
         notes: clean_string(input.notes),
         source: "manual".into(),
-        source_row_hash: format!("manual:{id}"),
     }
 }
 
@@ -186,14 +184,6 @@ fn validate_asset_ids(data: &StoreData, input: &ManualTransactionInput) -> anyho
 }
 
 fn validate_quote(input: &ManualTransactionInput) -> anyhow::Result<()> {
-    if input.kind == TransactionKind::StakingReward {
-        anyhow::ensure!(
-            input.quote_amount.is_none(),
-            "staking rewards have zero acquisition cost and no quote payment"
-        );
-        // Supported old deposits can retain a quote-asset metadata reference.
-        return Ok(());
-    }
     if !input.kind.supports_quote() {
         anyhow::ensure!(
             input.quote_asset_id.is_none() && input.quote_amount.is_none(),

@@ -5,7 +5,7 @@ use support::{create_asset, temp_store};
 use tuifolio::{
     assets::{AssetInput, save_asset},
     model::AssetKind,
-    price_sync::{add_manual_price, add_manual_price_for_asset},
+    price_sync::add_manual_price_for_asset,
 };
 
 const ASSET_KINDS: [AssetKind; 8] = [
@@ -38,7 +38,6 @@ fn manual_pricing_rejects_configured_yahoo_symbols_for_all_asset_types() {
         let id = save_asset(&mut store, None, yahoo_asset_input(&symbol, kind)).unwrap();
         let original = serde_json::to_value(&store.data).unwrap();
         assert!(add_manual_price_for_asset(&mut store, id, dec!(100), "EUR").is_err());
-        assert!(add_manual_price(&mut store, &symbol, dec!(100), "EUR").is_err());
         assert_eq!(serde_json::to_value(&store.data).unwrap(), original);
     }
 }

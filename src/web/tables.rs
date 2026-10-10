@@ -130,7 +130,7 @@ impl HoldingView {
             portfolio: holding.portfolio.clone(),
             quantity: holding.quantity.normalize().to_string(),
             value: Amount::new(holding.value, precision),
-            invested: Amount::new(holding.net_invested, precision),
+            invested: Amount::new(holding.recorded_net_spending, precision),
             basis: Amount::new(holding.remaining_cost_basis, precision),
             pnl: Amount::new(holding.unrealized_pnl, precision),
             missing: holding.missing_valuation,

@@ -75,7 +75,7 @@ impl Fixture {
         let holding = &report.holdings[0];
         assert_eq!(holding.asset_id, self.property);
         assert_eq!(holding.value, Some(Decimal::from(350)));
-        assert_eq!(holding.net_invested, Some(Decimal::ZERO));
+        assert_eq!(holding.recorded_net_spending, Some(Decimal::ZERO));
         assert_eq!(holding.unrealized_pnl, holding.value);
         assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350)));
     }
@@ -105,7 +105,7 @@ fn blank_cost_basis_remains_unknown() {
     add_manual_transaction(&mut fixture.store, input).unwrap();
     let report = build_report(&fixture.store.data);
     assert_eq!(report.holdings[0].value, Some(Decimal::from(350)));
-    assert_eq!(report.holdings[0].net_invested, None);
+    assert_eq!(report.holdings[0].recorded_net_spending, None);
     assert_eq!(report.holdings[0].unrealized_pnl, None);
 }
 
@@ -115,7 +115,7 @@ fn zero_cost_basis_does_not_require_a_foreign_exchange_rate() {
     let input = fixture.input(TransactionKind::Buy, Some(Decimal::from(100)));
     let result = add_manual_transaction(&mut fixture.store, input).unwrap();
     assert_eq!(
-        build_report(&fixture.store.data).holdings[0].net_invested,
+        build_report(&fixture.store.data).holdings[0].recorded_net_spending,
         None
     );
     let input = fixture.input(TransactionKind::Buy, Some(Decimal::ZERO));
@@ -136,10 +136,6 @@ fn editing_a_paid_acquisition_to_zero_removes_its_cash_movement() {
     input.quote_amount = Some(Decimal::ZERO);
     update_transaction(&mut fixture.store, previous.id, input).unwrap();
     assert_eq!(fixture.store.data.transactions[0].id, result.transaction_id);
-    assert_eq!(
-        fixture.store.data.transactions[0].source_row_hash,
-        previous.source_row_hash
-    );
     assert_eq!(fixture.store.data.ledger_entries.len(), 1);
     fixture.assert_zero_basis();
 }
@@ -211,7 +207,7 @@ fn ignored_historical_quotes_do_not_establish_a_zero_cost_basis() {
         fixture.store.data.transactions[0].kind = kind;
         rebuild_ledger(&mut fixture.store.data).unwrap();
         let report = build_report(&fixture.store.data);
-        assert_eq!(report.holdings[0].net_invested, None);
+        assert_eq!(report.holdings[0].recorded_net_spending, None);
         assert_eq!(report.holdings[0].unrealized_pnl, None);
         assert_eq!(
             fixture.store.data.transactions[0].quote_amount,
@@ -234,7 +230,10 @@ fn unsupported_historical_quotes_do_not_require_exchange_rates_or_mask_known_cos
     previous.quote_amount = Some(Decimal::from(777));
     rebuild_ledger(&mut fixture.store.data).unwrap();
     let report = build_report(&fixture.store.data);
-    assert_eq!(report.holdings[0].net_invested, Some(Decimal::from(100)));
+    assert_eq!(
+        report.holdings[0].recorded_net_spending,
+        Some(Decimal::from(100))
+    );
     assert_eq!(report.holdings[0].remaining_cost_basis, None);
     assert_eq!(report.holdings[0].unrealized_pnl, None);
     assert!(fixture.store.data.prices.is_empty());

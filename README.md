@@ -14,8 +14,9 @@ Requires Rust 1.89 or newer.
 cargo run -- web
 ```
 
-Open **http://127.0.0.1:3000**. Starting with `cargo run` also launches the web
-interface. Press `Ctrl+C` to stop.
+Open **http://127.0.0.1:3000**. `web` is the only application command; starting
+with `cargo run` also launches it with the default options. Reporting, price
+refreshes, and data edits use the web interface. Press `Ctrl+C` to stop.
 
 Create a portfolio and your assets in the web interface, then add transactions.
 CSV import and CSV-based datastore rebuilding have been removed.
@@ -53,8 +54,8 @@ runtime option; it adds no datastore fields.
 
 ### Price history retention
 
-Successful automatic, manual web and CLI refreshes compact prices in the same
-save as the new observations:
+Successful automatic and manual web refreshes compact prices in the same save
+as the new observations:
 
 - Keep every observation from the current UTC day.
 - For completed days, keep the last observation per asset ID and canonical quote
@@ -105,7 +106,9 @@ time, but completed days no longer accumulate every five-minute refresh.
   symbol. Manage dated stock splits in the same editor. Assets can be created
   before their first transaction.
 - The **Base** selector switches between configured valuation currencies on
-  change and requires JavaScript.
+  change and requires JavaScript. New stores start with EUR, USD, BTC, and ETH.
+  Existing stores retain their configured choices. Adding reporting currencies
+  and backfilling historical exchange rates are not supported workflows.
 - **Privacy** in the header hides totals, PnL, prices, transaction amounts, fees,
   and quantities behind the same six-dot mask, regardless of size or sign. It
   remembers your choice in this browser across navigation and reloads. Amount
@@ -161,17 +164,19 @@ asset also dispose of its basis. This does not make the app an Austrian tax
 report: crypto-to-crypto realization, wallet-level tax pooling, fees and other
 tax-specific rules are not comprehensively implemented.
 
-Existing deposits are never reclassified automatically. Supported quote-asset
-metadata without a payment remains ignored and can survive edits of reclassified
-reward records. For an aggregate receipt, the entered timestamp is the recognition
-time; the app does not invent earlier dates when individual rewards were earned.
+Existing deposits are never reclassified automatically. Staking rewards must have
+both quote fields empty, including when changing a deposit's type. Creating,
+editing, loading, and saving reject reward quote assets or amounts, even a zero
+amount. For an aggregate receipt, the entered timestamp is the recognition time;
+the app does not invent earlier dates when individual rewards were earned.
 
 The holdings table separates remaining basis from recorded net spending.
 Recorded net spending retains the primary-transaction cash-flow reference; it
 is not the remaining basis or a complete external-contribution/fee metric.
 
-The ledger-first JSON datastore lives in the platform's local data directory
-under `tuifolio/store.json`, unless you supply `--store`.
+The JSON datastore lives in the platform's local data directory under
+`tuifolio/store.json`, unless you supply `--store`. Transactions and stock split
+configuration are authoritative; ledger entries are a derived in-memory cache.
 
 Existing datastore paths resolve to their canonical target before locking and
 saving. Symlink aliases share the target's lock and remain symlinks after saves.
@@ -190,11 +195,14 @@ saved state in memory rather than claiming the edit was rolled back. Other
 platforms log that directory synchronization is unavailable; crash durability
 there is not guaranteed.
 
-- Tracks portfolios, assets, transactions, ledger entries, and prices.
+- Stores portfolios, assets, transactions, prices, and stock split configuration.
+  Ledger entries are derived in memory and are not serialized.
 - Every transaction posts its asset movement to ledger balances. Buys, sells,
   and quoted asset increases/decreases can optionally post their cash movement.
 - Ledger balances rebuild from transactions when opening the datastore and after
-  transaction edits, so stored ledger entries follow the current accounting rules.
+  transaction or split edits. Existing JSON `ledger_entries` payloads are ignored,
+  even if stale or malformed, and disappear on the next successful save. Opening
+  the datastore does not rewrite it. No migration command is needed.
 - Property and mortgage liabilities remain separate assets.
 - Configured stock splits apply when the ledger is rebuilt. They target asset IDs;
   no ticker-specific split events are inserted automatically.
@@ -208,9 +216,8 @@ there is not guaranteed.
 - PnL is derived from transactions, ledger entries, and prices. It is not
   persisted as canonical accounting truth.
 - Every holding without a valuation counts as unresolved, including cash and
-  liabilities. Web and CLI reports mark their balance-sheet totals as partial
-  and explain that these holdings are excluded. The CLI `missing-prices`
-  command includes them.
+  liabilities. The web interface marks balance-sheet totals as partial and
+  explains that these holdings are excluded.
 - Valuation completeness is separate from investment PnL availability. If
   investment holdings exist but none has computable PnL, the aggregate is
   unavailable rather than zero. A computable subtotal is marked partial when
@@ -235,33 +242,35 @@ quotes create no cash movement, even with **Post cash movement** selected.
 the positive quantity received; no quote currency, amount, or cash effect is
 needed. Its zero cost basis is derived from the transaction type, so the stored
 quote fields remain empty. The transaction list shows `0` and **Zero cost basis**.
-Gifts contribute zero to net invested and create no quote-side cash movement.
-Fees can still be recorded and deduct from the selected fee asset.
+Gifts contribute zero to recorded net spending and create no quote-side cash
+movement. Fees can still be recorded and deduct from the selected fee asset.
 
 **Asset increase** accepts an optional quote amount as acquisition cost, like
 **Buy**. **Asset decrease** accepts an optional quote amount as proceeds, like
-**Sell**. Costs add to net invested; proceeds subtract from it. Valuation-only
-increases or decreases can omit the quote without changing recorded costs or
-proceeds. In a synthetic example, an asset initially valued at 255 EUR with a
+**Sell**. Costs add to recorded net spending; proceeds subtract from it.
+Valuation-only increases or decreases can omit the quote without changing
+recorded costs or proceeds. In a synthetic example, an asset initially valued at 255 EUR with a
 420 EUR cost, followed by an unquoted valuation increase of 245 EUR, has a
-500 EUR value, 420 EUR net invested, and 80 EUR PnL.
+500 EUR value, 420 EUR recorded net spending, and 80 EUR PnL.
 
 The quote and cash fields appear only for **Buy**, **Sell**, **Asset increase**,
 and **Asset decrease**. Changing the type hides and disables inapplicable fields;
 their values are omitted on save. **Deposit**, **Withdraw**, **Liability increase**,
-**Liability decrease**, and **Gift** reject quote assets and amounts. Old quotes
-on deposit, withdrawal, and liability types are ignored when calculating PnL and
-do not establish a zero cost basis.
+**Liability decrease**, **Gift**, and **Staking reward** reject quote assets and
+amounts. Old quotes on deposit, withdrawal, and liability types are ignored when
+calculating PnL and do not establish a zero cost basis.
 
 Transactions reference portfolio and asset IDs and never create portfolios or
 change asset definitions.
 Fee assets and fee amounts must be supplied together.
 
-Editing keeps the transaction ID and historical origin fields, then rebuilds
-the ledger. Creating and editing use the same validation rules. Existing
+Editing keeps the transaction ID and `source` provenance, then rebuilds the
+ledger. Creating and editing use the same validation rules. Existing
 records with invalid amounts or incomplete buy/sell quotes need correction
-before an edit can be saved; they can still be viewed and deleted. Loading a
-store does not repair or reject these records automatically.
+before an edit can be saved; they can still be viewed and deleted. Loading does
+not repair these records or apply all new-transaction amount and quote rules.
+Staking rewards are stricter: loading also requires positive Crypto quantities,
+empty quote fields, and any same-asset fee to be smaller than the reward.
 
 The editor preserves the cash effect setting and timestamp
 precision on unchanged dates. Deleting removes the transaction and its ledger
@@ -284,7 +293,7 @@ Edits keep an asset's ID, so its transactions, ledger quantities, historical
 prices, and stock splits keep their references. Local symbols are fixed after
 creation; display names and provider mappings remain editable. Provider fields
 are used exactly as configured. Blank mappings stay blank across restarts and
-transactions, regardless of an asset's historical metadata-source flag.
+transactions.
 
 Yahoo and TradingView symbols are entered explicitly. The editor checks their
 format, but does not search or verify instruments against those providers.
@@ -302,13 +311,12 @@ to Cash/Crypto asset IDs, with Cash identities for fiat units. An investment
 that shares a currency ticker does not receive an implicit unit price of one.
 
 Manual price recording lives on each asset's edit page and uses that asset's ID.
-An asset with a Yahoo symbol cannot accept new manual prices, including through
-the CLI. Clear the Yahoo symbol and save first. Existing quotes are retained when
-provider settings change. Cash exchange-rate refreshes can still replace manual
-cash quotes. The optional UTC observation time records a dated price or FX
-correction without changing transactions. Leave it blank to record now. Future
-observations are rejected. The CLI equivalent is
-`add-price USD 0.9 EUR --at 2020-01-01T00:00:00Z`.
+An asset with a Yahoo symbol cannot accept new manual prices. Clear the Yahoo
+symbol and save first. Existing quotes are retained when provider settings
+change. Cash exchange-rate refreshes can still replace manual cash quotes. The
+optional UTC observation time records a dated price or FX correction without
+changing transactions. Leave it blank to record now. Future observations are
+rejected.
 
 Zero market prices are allowed for non-Cash assets, while Cash
 exchange rates must remain positive. Zero-valued crypto observations cannot be
@@ -321,8 +329,9 @@ The input appears only for these types and updates when the type changes with
 JavaScript enabled. Switching to another type omits intrinsic valuation on save.
 
 Currency assets used in accounting must retain a Cash or Crypto type. Their
-display names and provider settings remain editable. CLI and web reporting
-currency changes share validation and normalize identifiers to uppercase.
+display names and provider settings remain editable. Reporting currency
+selection validates existing configured choices and normalizes identifiers to
+uppercase. It does not add currencies or fetch historical exchange rates.
 Reporting accepts recognized fiat codes or unique Cash/Crypto identities, not
 arbitrary stock symbols. Configured BTC and ETH units remain available even
 before any holdings exist.
@@ -384,32 +393,22 @@ does not bypass the conflict check. Unrelated edits and price refreshes do not
 invalidate a record's version. This works with and without JavaScript and adds
 no datastore fields.
 
-One Tuifolio process owns a datastore at a time. Stop the web server before
-running CLI commands against the same datastore. The adjacent `.lock` file is
-normal; the operating system releases its lock when the process exits.
+One Tuifolio process owns a datastore at a time. Stop the server before starting
+another instance against the same datastore. The adjacent `.lock` file is normal;
+the operating system releases its lock when the process exits.
 
-### Legacy datastore fields retained for later cleanup
+### Datastore format
 
-CSV processing and its runtime workarounds are gone. The historical fields below
-remain in the datastore.
+Transaction `source` records provenance and appears in transaction details;
+new entries use `manual`. Origin never changes accounting. In-memory ledger entries
+are rebuilt from transactions under the current rules. Reporting uses
+`selected_base_currency` from the configured currency choices; there is no
+separate default reporting-currency field. Import staging rows, transaction row
+hashes, and asset metadata-source flags are not part of the current datastore.
 
-| Field | Current behavior | Later cleanup |
-| --- | --- | --- |
-| `raw_rows` | Historical row payloads load and save unchanged. Nothing parses, hashes, or consults them for deduplication. | Remove the field and its stored payloads through an explicit schema/data migration. |
-| Transaction `source` | Historical origin labels are preserved and can appear in transaction details. New transactions use `manual`. Origin never affects validation, balances, or valuation. | Decide whether to keep general provenance or remove old import labels. |
-| Transaction `source_row_hash` | Existing values survive edits. New transactions still write `manual:<id>` to satisfy the retained field. It is not used for matching or deduplication. | Remove the field or replace it with a general-purpose identifier if needed. |
-| Asset `metadata_source` | The `Automatic`/`User` values remain readable and writable; new or edited assets use `User`. The flag no longer controls provider inference or metadata reconciliation. | Remove the flag and its enum when the storage schema is cleaned up. |
-
-Existing transactions originally created from CSV remain ordinary ledger
-records. This change does not rewrite or delete
-them, clear raw rows, or reset IDs.
-
-Quote/cash posting effects, intrinsic valuation currencies, prices and their
-sources, and asset-ID stock split events are active accounting features, not
-obsolete import fields. Existing configured split events continue to affect balances.
-
-There is no automatic datastore migration. Transactions and stock splits must
-use the current format; unknown fields are rejected rather than silently dropped.
+Transactions and stock splits must use the current format. Unknown fields on
+those records are rejected rather than silently dropped. The app has no datastore
+conversion command.
 
 The asset-side `base_ledger_effect` field and "Record only" option are unsupported.
 Stores containing that transaction field fail to load, including when its value
@@ -423,19 +422,6 @@ If loading fails on these old fields, use a compatible store snapshot or
 reconcile and convert a separate copy before using it. Do not simply delete an
 `Ignore` posting flag or a split symbol to bypass the error; that can change
 balances. A rejected store is not rewritten.
-
-## CLI commands
-
-```sh
-cargo run -- sync-prices
-cargo run -- summary
-cargo run -- holding BTC
-cargo run -- missing-prices
-cargo run -- add-price GOLD 3000 EUR
-cargo run -- base BTC
-```
-
-`base` selects a base currency and adds it to the configured choices if necessary.
 
 ## Development
 
