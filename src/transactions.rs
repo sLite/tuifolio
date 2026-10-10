@@ -125,7 +125,9 @@ fn manual_transaction(id: Id, portfolio_id: Id, input: ManualTransactionInput) -
         base_amount: input.base_amount,
         quote_asset_id: input.quote_asset_id,
         quote_amount: input.quote_amount,
-        quote_ledger_effect: if input.kind.has_implicit_zero_cost_basis() {
+        quote_ledger_effect: if input.kind.has_implicit_zero_cost_basis()
+            || input.kind == TransactionKind::StakingReward
+        {
             LedgerEffect::Ignore
         } else {
             input.quote_ledger_effect
@@ -152,6 +154,19 @@ fn validate_input(data: &StoreData, input: &ManualTransactionInput) -> anyhow::R
         "quantity must be greater than zero"
     );
     validate_asset_ids(data, input)?;
+    if input.kind == TransactionKind::StakingReward {
+        anyhow::ensure!(
+            data.assets
+                .iter()
+                .any(|a| a.id == input.base_asset_id && a.kind == crate::model::AssetKind::Crypto),
+            "staking rewards require a Crypto asset"
+        );
+        anyhow::ensure!(
+            input.fee_asset_id != Some(input.base_asset_id)
+                || input.fee_amount.is_none_or(|fee| fee < input.base_amount),
+            "staking reward fee must be smaller than the received quantity"
+        );
+    }
     validate_quote(input)?;
     validate_fee(input)
 }
@@ -173,6 +188,14 @@ fn validate_asset_ids(data: &StoreData, input: &ManualTransactionInput) -> anyho
 }
 
 fn validate_quote(input: &ManualTransactionInput) -> anyhow::Result<()> {
+    if input.kind == TransactionKind::StakingReward {
+        anyhow::ensure!(
+            input.quote_amount.is_none(),
+            "staking rewards use dated market prices, not a quote payment"
+        );
+        // Supported old deposits can retain a quote-asset metadata reference.
+        return Ok(());
+    }
     if !input.kind.supports_quote() {
         anyhow::ensure!(
             input.quote_asset_id.is_none() && input.quote_amount.is_none(),

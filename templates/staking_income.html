@@ -1,0 +1,5 @@
+<div class="table-scroll" tabindex="0" role="region" aria-label="Staking income table">
+  <table><thead><tr><th scope="col">Portfolio</th><th scope="col">Asset</th><th scope="col" class="number">Staking income</th></tr></thead>
+  <tbody>{% for row in staking %}<tr><td>{{ row.portfolio }}</td><td>{{ row.symbol }}</td><td class="number {{ row.income.tone }}">{% call privacy::amount(row.income.text) %}</td></tr>{% endfor %}</tbody></table>
+</div>
+<p class="field-help">Market value at the recorded receipt time is reward income and acquisition basis. Later price changes appear in investment PnL. Income remains visible after a position closes. Fees increase acquisition cost or reduce received units. These are portfolio-performance figures, not tax calculations.</p>

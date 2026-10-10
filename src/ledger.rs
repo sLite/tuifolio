@@ -117,6 +117,7 @@ fn base_sign(kind: TransactionKind) -> Decimal {
     match kind {
         TransactionKind::Buy
         | TransactionKind::Gift
+        | TransactionKind::StakingReward
         | TransactionKind::Deposit
         | TransactionKind::AssetIncrease
         | TransactionKind::LiabilityIncrease => Decimal::ONE,

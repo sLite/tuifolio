@@ -116,6 +116,25 @@ third-asset fees as acquisition costs, consistently across equivalent Buy and
 Sell representations. Unquoted movements and transfer/expense classification
 still have limits; they do not infer historical transfers or staking income.
 
+### Staking rewards
+
+Use **Staking reward** for a Crypto asset received as a staking reward. Enter its
+quantity and UTC receipt time, without a purchase payment. Its market value at
+that time establishes acquisition basis and separate staking income. Later price
+changes appear in unrealized or realized investment PnL, so receipt income is
+not counted twice. Income stays in reports after the position closes.
+
+The overview, portfolio detail and CLI summary show staking income separately.
+Missing historical asset prices or conversions leave income and basis unavailable;
+later prices cannot fill that gap. Fees increase acquisition cost or reduce
+received units, and fees paid in another investment asset dispose of its basis.
+These figures are for portfolio performance, not tax reporting.
+
+Existing deposits are never reclassified automatically. Supported quote-asset
+metadata without a payment remains ignored and can survive edits of reclassified
+reward records. For an aggregate receipt, the entered timestamp is the recognition
+time; the app does not invent earlier dates when individual rewards were earned.
+
 The holdings table separates remaining basis from recorded net spending.
 Recorded net spending retains the primary-transaction cash-flow reference; it
 is not the remaining basis or a complete external-contribution/fee metric.

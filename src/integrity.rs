@@ -51,6 +51,27 @@ pub fn validate_store(data: &StoreData) -> anyhow::Result<()> {
             transaction.id,
             transaction.portfolio_id
         );
+        if transaction.kind == crate::model::TransactionKind::StakingReward {
+            anyhow::ensure!(
+                data.assets.iter().any(|a| a.id == transaction.base_asset_id
+                    && a.kind == crate::model::AssetKind::Crypto),
+                "staking reward {} requires a Crypto asset",
+                transaction.id
+            );
+            anyhow::ensure!(
+                transaction.base_amount > Decimal::ZERO && transaction.quote_amount.is_none(),
+                "staking reward {} needs positive quantity and no quote payment",
+                transaction.id
+            );
+            anyhow::ensure!(
+                transaction.fee_asset_id != Some(transaction.base_asset_id)
+                    || transaction
+                        .fee_amount
+                        .is_none_or(|fee| fee < transaction.base_amount),
+                "staking reward {} fee must be smaller than the received quantity",
+                transaction.id
+            );
+        }
         for (role, id) in [
             ("base", Some(transaction.base_asset_id)),
             ("quote", transaction.quote_asset_id),

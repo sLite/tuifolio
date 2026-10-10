@@ -8,18 +8,20 @@ use crate::{
     model::{AssetKind, LedgerEffect, LedgerRole, TransactionKind},
 };
 
-const NON_QUOTED_KINDS: [&str; 5] = [
+const NON_QUOTED_KINDS: [&str; 6] = [
     "Gift",
+    "StakingReward",
     "Deposit",
     "Withdraw",
     "LiabilityIncrease",
     "LiabilityDecrease",
 ];
 
-const QUOTE_CASES: [(&str, bool, bool); 9] = [
+const QUOTE_CASES: [(&str, bool, bool); 10] = [
     ("Buy", true, true),
     ("Sell", true, true),
     ("Gift", false, false),
+    ("StakingReward", false, false),
     ("AssetIncrease", true, false),
     ("AssetDecrease", true, false),
     ("Deposit", false, false),
@@ -125,7 +127,12 @@ async fn forged_quote_fields_are_rejected_for_non_quoted_types() {
         format!("&quote_asset_id={eur}&quote_amount=0"),
         "&quote_amount=100".into(),
     ];
-    for kind in NON_QUOTED_KINDS {
+    // Staking rewards separately preserve supported deposit quote-asset metadata.
+    // They reject quote payments, covered by staking_rewards tests.
+    for kind in NON_QUOTED_KINDS
+        .into_iter()
+        .filter(|kind| *kind != "StakingReward")
+    {
         for quote in &quotes {
             let body = body(&fixture, kind) + quote;
             let page = html(

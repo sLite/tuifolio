@@ -12,6 +12,8 @@ pub(super) struct Position {
     pub basis: Option<Decimal>,
     pub realized: Option<Decimal>,
     pub disposed: bool,
+    pub rewarded: bool,
+    pub staking_income: Option<Decimal>,
 }
 
 impl Default for Position {
@@ -21,6 +23,8 @@ impl Default for Position {
             basis: Some(Decimal::ZERO),
             realized: Some(Decimal::ZERO),
             disposed: false,
+            rewarded: false,
+            staking_income: Some(Decimal::ZERO),
         }
     }
 }
@@ -244,7 +248,29 @@ pub(super) fn replay(
             fee_handled = embedded_fee;
         } else if investment(primary) {
             let pool = pools.entry((t.portfolio_id, primary.id)).or_default();
-            if t.kind == TransactionKind::Gift {
+            if t.kind == TransactionKind::StakingReward {
+                let income = valued_amount(data, t, primary, primary_delta, base, assets);
+                pool.rewarded = true;
+                pool.staking_income = pool
+                    .staking_income
+                    .zip(income)
+                    .and_then(|(a, b)| a.checked_add(b));
+                let embedded = fee.is_some_and(|(asset, _)| asset.id == primary.id);
+                let quantity = if embedded {
+                    primary_delta.checked_sub(fee.unwrap().1)
+                } else {
+                    Some(primary_delta)
+                };
+                let additional_fee = fee
+                    .filter(|_| !embedded)
+                    .map(|(asset, q)| valued_amount(data, t, asset, q, base, assets))
+                    .unwrap_or(Some(Decimal::ZERO));
+                let basis = income
+                    .zip(additional_fee)
+                    .and_then(|(a, b)| a.checked_add(b));
+                pool.acquire(quantity.unwrap_or(primary_delta), basis);
+                fee_handled = embedded;
+            } else if t.kind == TransactionKind::Gift {
                 let embedded = fee.is_some_and(|(asset, _)| asset.id == primary.id);
                 let q = if embedded {
                     primary_delta.checked_sub(fee.unwrap().1)

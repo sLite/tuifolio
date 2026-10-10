@@ -29,6 +29,7 @@ pub enum TransactionKind {
     Buy,
     Sell,
     Gift,
+    StakingReward,
     Deposit,
     Withdraw,
     AssetIncrease,
@@ -58,6 +59,7 @@ impl TransactionKind {
             Self::Buy | Self::AssetIncrease => -amount,
             Self::Sell | Self::AssetDecrease => amount,
             Self::Gift
+            | Self::StakingReward
             | Self::Deposit
             | Self::Withdraw
             | Self::LiabilityIncrease

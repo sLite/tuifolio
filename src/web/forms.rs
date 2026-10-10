@@ -58,6 +58,13 @@ impl TransactionForm {
         if Some(input.timestamp) == displayed_time {
             input.timestamp = previous.timestamp;
         }
+        if previous.kind == TransactionKind::StakingReward
+            && input.kind == TransactionKind::StakingReward
+            && input.quote_asset_id.is_none()
+            && input.quote_amount.is_none()
+        {
+            input.quote_asset_id = previous.quote_asset_id;
+        }
         Ok(input)
     }
 

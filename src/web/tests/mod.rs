@@ -9,6 +9,7 @@ mod portfolios;
 mod privacy;
 mod quote_visibility;
 mod report_completeness;
+mod staking_rewards;
 mod stock_splits;
 mod transaction_details;
 mod transaction_editing;
