@@ -59,7 +59,7 @@ pub fn build_report(data: &StoreData) -> Report {
         let Some(asset) = asset_map.get(&asset_id) else {
             continue;
         };
-        let value = value_in_base(asset, quantity, &base, &latest_prices, &asset_map);
+        let value = value_in_base(data, asset, quantity, &base, &latest_prices, &asset_map);
         let net_invested = net_invested(data, portfolio_id, asset_id, &base, &asset_map);
         let unrealized_pnl = value.zip(net_invested).map(|(v, i)| v - i);
         holdings.push(HoldingRow {
@@ -151,6 +151,7 @@ fn prices_at(data: &StoreData, timestamp: DateTime<Utc>) -> HashMap<(Id, String)
 }
 
 fn value_in_base(
+    data: &StoreData,
     asset: &Asset,
     quantity: Decimal,
     base: &str,
@@ -166,7 +167,9 @@ fn value_in_base(
     }
     let price = price_for_asset(asset.id, base, prices)?;
     let rate = conversion_rate(&price.currency, base, prices, assets)?;
-    Some(quantity * price.price * rate)
+    let unit_price =
+        crate::ledger::split_adjusted_price(data, asset.id, price.timestamp, price.price).ok()?;
+    quantity.checked_mul(unit_price)?.checked_mul(rate)
 }
 
 fn price_for_asset<'a>(

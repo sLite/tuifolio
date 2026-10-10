@@ -35,10 +35,10 @@ fn transaction_entries(
     data: &StoreData,
 ) -> anyhow::Result<Vec<LedgerEntry>> {
     let mut entries = vec![base_entry(transaction, assets, data)?];
-    if let Some(entry) = quote_entry(transaction, assets)? {
+    if let Some(entry) = quote_entry(transaction, assets, data)? {
         entries.push(entry);
     }
-    if let Some(entry) = fee_entry(transaction, assets)? {
+    if let Some(entry) = fee_entry(transaction, assets, data)? {
         entries.push(entry);
     }
     Ok(entries)
@@ -72,6 +72,7 @@ fn base_entry(
 fn quote_entry(
     transaction: &Transaction,
     assets: &HashMap<Id, &Asset>,
+    data: &StoreData,
 ) -> anyhow::Result<Option<LedgerEntry>> {
     let (Some(asset_id), Some(amount)) = (transaction.quote_asset_id, transaction.quote_amount)
     else {
@@ -86,7 +87,7 @@ fn quote_entry(
         transaction_id: transaction.id,
         portfolio_id: transaction.portfolio_id,
         asset_id,
-        quantity_delta: cash_delta,
+        quantity_delta: split_adjusted_amount(data, asset_id, transaction.timestamp, cash_delta)?,
         role: LedgerRole::Quote,
     }))
 }
@@ -94,6 +95,7 @@ fn quote_entry(
 fn fee_entry(
     transaction: &Transaction,
     assets: &HashMap<Id, &Asset>,
+    data: &StoreData,
 ) -> anyhow::Result<Option<LedgerEntry>> {
     let (Some(asset_id), Some(amount)) = (transaction.fee_asset_id, transaction.fee_amount) else {
         return Ok(None);
@@ -106,7 +108,7 @@ fn fee_entry(
         transaction_id: transaction.id,
         portfolio_id: transaction.portfolio_id,
         asset_id,
-        quantity_delta: -amount,
+        quantity_delta: -split_adjusted_amount(data, asset_id, transaction.timestamp, amount)?,
         role: LedgerRole::Fee,
     }))
 }
@@ -139,17 +141,58 @@ fn split_adjusted_amount(
         }
         let effective_date = NaiveDate::parse_from_str(&split.effective_date, "%Y-%m-%d")?;
         if transaction_date < effective_date {
-            adjusted = split
-                .numerator
-                .checked_div(split.denominator)
-                .and_then(|ratio| adjusted.checked_mul(ratio))
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "split-adjusted quantity is outside the supported decimal range"
-                    )
-                })?;
+            adjusted = apply_split_ratio(adjusted, split.numerator, split.denominator)?;
         }
     }
+    Ok(adjusted)
+}
+
+/// Recorded observations keep their original units. Convert a derived price
+/// into the same split-adjusted units used by today's rebuilt ledger.
+pub(crate) fn split_adjusted_price(
+    data: &StoreData,
+    asset_id: Id,
+    timestamp: DateTime<Utc>,
+    price: Decimal,
+) -> anyhow::Result<Decimal> {
+    let mut adjusted = price;
+    for split in &data.config.stock_splits {
+        if split.asset_id == asset_id
+            && timestamp.date_naive()
+                < NaiveDate::parse_from_str(&split.effective_date, "%Y-%m-%d")?
+        {
+            adjusted = apply_split_ratio(adjusted, split.denominator, split.numerator)?;
+        }
+    }
+    Ok(adjusted)
+}
+
+fn apply_split_ratio(
+    amount: Decimal,
+    numerator: Decimal,
+    denominator: Decimal,
+) -> anyhow::Result<Decimal> {
+    anyhow::ensure!(
+        numerator > Decimal::ZERO && denominator > Decimal::ZERO,
+        "split numerator and denominator must be positive"
+    );
+    // Multiply before division so, for example, three shares in a 1:3 split
+    // become exactly one rather than a recurring intermediate fraction.
+    let adjusted = amount
+        .checked_mul(numerator)
+        .and_then(|value| value.checked_div(denominator))
+        .or_else(|| {
+            numerator
+                .checked_div(denominator)
+                .and_then(|ratio| amount.checked_mul(ratio))
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("split-adjusted amount is outside the supported decimal range")
+        })?;
+    anyhow::ensure!(
+        amount.is_zero() || !adjusted.is_zero(),
+        "split-adjusted amount rounds to zero"
+    );
     Ok(adjusted)
 }
 

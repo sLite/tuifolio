@@ -179,7 +179,7 @@ fn configured_splits_use_effective_dates_and_do_not_mutate_transactions() {
 }
 
 #[test]
-fn splits_compound_reverse_ratios_without_adjusting_quote_or_fee_amounts() {
+fn splits_compound_reverse_ratios_without_adjusting_unrelated_cash_legs() {
     let mut store = ledger_store();
     let asset = create_asset(&mut store, "ABC", "ABC", AssetKind::Stock);
     let cash = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
@@ -211,4 +211,111 @@ fn creating_gme_does_not_create_automatic_split_events() {
     let mut store = ledger_store();
     create_asset(&mut store, "GME", "GameStop", AssetKind::Stock);
     assert!(store.data.config.stock_splits.is_empty());
+}
+
+#[test]
+fn split_adjusts_share_fees_and_preserves_original_transaction() {
+    let mut store = ledger_store();
+    let asset = create_asset(&mut store, "ABC", "ABC", AssetKind::Stock);
+    let mut movement = transaction(&mut store, asset, TransactionKind::Deposit, 10.into());
+    movement.timestamp = "2023-01-01T00:00:00Z".parse().unwrap();
+    movement.fee_asset_id = Some(asset);
+    movement.fee_amount = Some(Decimal::ONE);
+    store.data.transactions.push(movement);
+    store.data.config.stock_splits.push(StockSplit {
+        asset_id: asset,
+        effective_date: "2024-01-01".into(),
+        numerator: 2.into(),
+        denominator: Decimal::ONE,
+    });
+    let before = serde_json::to_value(&store.data.transactions).unwrap();
+    rebuild_ledger(&mut store.data).unwrap();
+    assert_eq!(balance(&store, asset), Decimal::from(18));
+    assert_eq!(
+        serde_json::to_value(&store.data.transactions).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn split_adjusts_posted_quote_and_fee_legs_by_their_own_asset_and_date() {
+    let mut store = ledger_store();
+    let shares = create_asset(&mut store, "ABC", "ABC", AssetKind::Stock);
+    let other = create_asset(&mut store, "XYZ", "XYZ", AssetKind::Stock);
+    let initial = dated_movement(
+        &mut store,
+        shares,
+        TransactionKind::Deposit,
+        "2023-01-01T00:00:00Z",
+    );
+    store
+        .data
+        .transactions
+        .iter_mut()
+        .find(|t| t.id == initial)
+        .unwrap()
+        .base_amount = 20.into();
+    for date in ["2023-12-31T23:59:59Z", "2024-01-01T00:00:00Z"] {
+        let mut movement = transaction(&mut store, other, TransactionKind::Buy, Decimal::ONE);
+        movement.timestamp = date.parse().unwrap();
+        movement.quote_asset_id = Some(shares);
+        movement.quote_amount = Some(3.into());
+        movement.fee_asset_id = Some(shares);
+        movement.fee_amount = Some(Decimal::ONE);
+        store.data.transactions.push(movement);
+    }
+    store.data.config.stock_splits.push(StockSplit {
+        asset_id: shares,
+        effective_date: "2024-01-01".into(),
+        numerator: 2.into(),
+        denominator: Decimal::ONE,
+    });
+    rebuild_ledger(&mut store.data).unwrap();
+    assert_eq!(balance(&store, shares), Decimal::from(28)); // 40 - 8 before split - 4 after.
+    assert_eq!(balance(&store, other), Decimal::from(2));
+}
+
+#[test]
+fn exact_reverse_split_followed_by_full_disposal_leaves_no_residual() {
+    let mut store = ledger_store();
+    let asset = create_asset(&mut store, "ABC", "ABC", AssetKind::Stock);
+    let first = dated_movement(
+        &mut store,
+        asset,
+        TransactionKind::Deposit,
+        "2023-01-01T00:00:00Z",
+    );
+    store
+        .data
+        .transactions
+        .iter_mut()
+        .find(|t| t.id == first)
+        .unwrap()
+        .base_amount = 3.into();
+    let last = dated_movement(
+        &mut store,
+        asset,
+        TransactionKind::Withdraw,
+        "2025-01-01T00:00:00Z",
+    );
+    store
+        .data
+        .transactions
+        .iter_mut()
+        .find(|t| t.id == last)
+        .unwrap()
+        .base_amount = Decimal::ONE;
+    store.data.config.stock_splits.push(StockSplit {
+        asset_id: asset,
+        effective_date: "2024-01-01".into(),
+        numerator: Decimal::ONE,
+        denominator: 3.into(),
+    });
+    rebuild_ledger(&mut store.data).unwrap();
+    assert_eq!(balance(&store, asset), Decimal::ZERO);
+    assert!(
+        tuifolio::accounting::build_report(&store.data)
+            .holdings
+            .is_empty()
+    );
 }

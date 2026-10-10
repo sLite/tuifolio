@@ -247,11 +247,14 @@ its date or ratio, or use **Delete split** to remove it. Splits are listed newes
 first and are scoped to the asset's ID, even when assets share a symbol.
 
 Saving or deleting a split rebuilds ledger balances immediately across portfolios.
-It adjusts only the asset-side quantities of transactions before the effective
-date in UTC. Transactions on that date are already treated as post-split. The date
+It adjusts every posted ledger leg in that asset, including quote and fee legs,
+for transactions before the effective date in UTC. Transactions on that date are already treated as post-split. The date
 is a transaction cutoff, not a scheduled job; future-dated splits also apply
 immediately. Original transactions, quote amounts, fees, and recorded prices are
-retained. Multiple splits compound under the existing ledger rules.
+retained. Multiple splits compound under the existing ledger rules. Derived
+market prices are adjusted inversely when their recorded timestamp predates a
+split, keeping their units consistent with the rebuilt quantities. Post-split
+observations are not adjusted again.
 
 Dates must use `YYYY-MM-DD`; ratio values must be positive decimals and must change
 the quantity. Only one split per asset and date can be saved. Failed validation,
@@ -272,8 +275,10 @@ same value, with positive and negative amounts colored like the overview.
 
 ### Saving data
 
-Saves atomically replace the JSON file. Web edits become active only after a
-successful save. Price refreshes fetch outside the datastore lock, then merge
+Saves atomically replace the JSON file. Web edits become active after that
+replacement. Failures before replacement retain the previous data. A directory
+synchronization failure after replacement reports that the edit was saved but
+its crash durability is uncertain; active state still matches the saved file. Price refreshes fetch outside the datastore lock, then merge
 their quotes into the current data, preserving edits made during the refresh.
 Quotes fetched with provider settings that changed during a refresh are discarded.
 

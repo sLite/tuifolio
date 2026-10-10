@@ -252,7 +252,7 @@ async fn failed_rebuilds_roll_back_splits_and_balances() {
         StatusCode::UNPROCESSABLE_ENTITY,
     )
     .await;
-    assert!(page.contains("split-adjusted quantity is outside"));
+    assert!(page.contains("split-adjusted amount is outside"));
     assert_eq!(serde_json::to_value(fixture.persisted()).unwrap(), before);
     assert_eq!(
         serde_json::to_value(fixture.state.snapshot().await.unwrap()).unwrap(),
