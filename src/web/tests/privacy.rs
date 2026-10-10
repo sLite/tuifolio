@@ -55,9 +55,9 @@ async fn reports_and_prices_wrap_all_displayed_financial_values() {
     let portfolio = data.portfolios[0].id;
     let btc = fixture.asset_id("BTC").await;
     for (path, count) in [
-        ("/".into(), 10),
+        ("/".into(), 11),
         ("/portfolios".into(), 4),
-        (format!("/portfolios/{portfolio}"), 10),
+        (format!("/portfolios/{portfolio}"), 11),
         ("/transactions".into(), 4),
         ("/assets".into(), 3),
         (format!("/assets/{btc}"), 1),

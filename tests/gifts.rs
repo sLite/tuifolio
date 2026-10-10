@@ -157,8 +157,12 @@ fn gift_fees_post_separately_from_the_implicit_zero_quote() {
     assert_eq!(fee.quantity_delta, Decimal::from(-2));
     assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
     assert_eq!(
+        fixture.holding().remaining_cost_basis,
+        Some(Decimal::from(2))
+    );
+    assert_eq!(
         fixture.holding().unrealized_pnl,
-        Some(Decimal::from(350000))
+        Some(Decimal::from(349998))
     );
 }
 

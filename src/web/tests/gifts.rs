@@ -59,8 +59,13 @@ impl Fixture {
             .find(|holding| holding.asset_id == self.asset)
             .unwrap();
         assert_eq!(holding.net_invested, Some(dec!(0)));
-        assert_eq!(holding.unrealized_pnl, Some(dec!(350000)));
-        assert_eq!(report.portfolios[0].unrealized_pnl, Some(dec!(350000)));
+        let fee = data.transactions[0].fee_amount.unwrap_or(dec!(0));
+        assert_eq!(holding.remaining_cost_basis, Some(fee));
+        assert_eq!(holding.unrealized_pnl, Some(dec!(350000) - fee));
+        assert_eq!(
+            report.portfolios[0].unrealized_pnl,
+            Some(dec!(350000) - fee)
+        );
     }
 }
 

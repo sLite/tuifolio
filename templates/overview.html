@@ -24,4 +24,10 @@
   {% include "holdings.html" %}
 </section>
 {% endif %}
+{% if !realized.is_empty() %}
+<section class="panel"><div class="panel-heading"><h2>Realized PnL</h2><span class="{{ summary.realized.tone }}">{% call privacy::amount(summary.realized.text) %} {{ common.base }}{% if summary.missing_realized > 0 && summary.realized.text != "Unavailable" %} · Partial{% endif %}</span></div>
+{% if summary.missing_realized > 0 %}<div class="notice warning">{{ summary.missing_realized }} investment positions have unavailable realized PnL because historical proceeds or cost basis are missing.</div>{% endif %}
+{% include "realized_returns.html" %}
+</section>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,7 @@
+<div class="table-scroll" tabindex="0" role="region" aria-label="Realized returns table">
+  <table>
+    <thead><tr><th scope="col">Portfolio</th><th scope="col">Asset</th><th scope="col" class="number">Realized PnL</th></tr></thead>
+    <tbody>{% for row in realized %}<tr><td>{{ row.portfolio }}</td><td>{{ row.symbol }}</td><td class="number {{ row.pnl.tone }}">{% call privacy::amount(row.pnl.text) %}</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+<p class="field-help">Weighted-average cost. Includes closed positions and investment assets used to pay fees. Cash FX performance is not included. Recorded net spending is a separate primary-transaction cash-flow reference, not remaining basis.</p>

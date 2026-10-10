@@ -229,7 +229,11 @@ async fn posted_asset_decrease_quotes_add_cash_and_subtract_proceeds_from_net_in
             .status(),
         StatusCode::SEE_OTHER
     );
-    fixture.assert_pnl(400000, 360000, 40000);
+    fixture.assert_pnl(400000, 360000, 64000);
+    assert_eq!(
+        build_report(&fixture.app.persisted()).total_realized_pnl,
+        Some(dec!(-24000))
+    );
     assert_eq!(fixture.cash_balance(), dec!(60000));
     assert_eq!(fixture.app.persisted().ledger_entries.len(), 3);
 }

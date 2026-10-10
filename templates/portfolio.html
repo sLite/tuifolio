@@ -12,4 +12,10 @@
 {% if portfolio.missing > 0 %}<div class="notice warning"><span>{{ portfolio.missing }} holdings have no valuation. Partial totals exclude these holdings, including unvalued cash and liabilities.</span><a href="/assets">Review assets →</a></div>{% endif %}
 {% if portfolio.missing_pnl > 0 %}<div class="notice warning">{{ portfolio.missing_pnl }} investment holdings have unavailable PnL because valuation or cost basis is missing. {% if portfolio.pnl.text == "Unavailable" %}No investment PnL can be calculated.{% else %}Partial PnL excludes these holdings.{% endif %}</div>{% endif %}
 <section class="panel"><div class="panel-heading"><h2>Holdings <span class="count">{{ holdings.len() }}</span></h2></div>{% include "holdings.html" %}</section>
+{% if !realized.is_empty() %}
+<section class="panel"><div class="panel-heading"><h2>Realized PnL</h2><span class="{{ portfolio.realized.tone }}">{% call privacy::amount(portfolio.realized.text) %} {{ common.base }}{% if portfolio.missing_realized > 0 && portfolio.realized.text != "Unavailable" %} · Partial{% endif %}</span></div>
+{% if portfolio.missing_realized > 0 %}<div class="notice warning">{{ portfolio.missing_realized }} investment positions have unavailable realized PnL because historical proceeds or cost basis are missing.</div>{% endif %}
+{% include "realized_returns.html" %}
+</section>
+{% endif %}
 {% endblock %}

@@ -235,10 +235,8 @@ fn unsupported_historical_quotes_do_not_require_exchange_rates_or_mask_known_cos
     rebuild_ledger(&mut fixture.store.data).unwrap();
     let report = build_report(&fixture.store.data);
     assert_eq!(report.holdings[0].net_invested, Some(Decimal::from(100)));
-    assert_eq!(
-        report.holdings[0].unrealized_pnl,
-        Some(Decimal::from(699900))
-    );
+    assert_eq!(report.holdings[0].remaining_cost_basis, None);
+    assert_eq!(report.holdings[0].unrealized_pnl, None);
     assert!(fixture.store.data.prices.is_empty());
 }
 

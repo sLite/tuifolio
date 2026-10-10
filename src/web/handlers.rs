@@ -11,7 +11,7 @@ use super::{
     navigation::{navigate, safe_return_path},
     query::PageQuery,
     state::AppState,
-    tables::{PortfolioView, Summary, holdings, precision},
+    tables::{PortfolioView, Summary, holdings, precision, realized},
     views::{
         Common, OverviewPage, PortfolioPage, PortfoliosPage, TransactionsPage, portfolio_choices,
     },
@@ -29,6 +29,7 @@ pub(super) async fn overview(
     render(OverviewPage {
         common: Common::new(&data, "Overview", "overview", uri.to_string()),
         summary: Summary::new(&report, precision(&data)),
+        realized: realized(&report, None, precision(&data)),
         holdings: holdings(&report, &data, &query),
         portfolios: portfolio_choices(&data, &query),
         search: query.search,
@@ -72,6 +73,7 @@ pub(super) async fn portfolio(
             format!("/portfolios/{id}"),
         ),
         portfolio: PortfolioView::new(portfolio, precision(&data)),
+        realized: realized(&report, Some(id), precision(&data)),
         holdings: holdings(&report, &data, &query),
     })
 }

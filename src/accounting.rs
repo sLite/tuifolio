@@ -5,6 +5,8 @@ use rust_decimal::Decimal;
 
 use crate::model::{Asset, AssetKind, Id, Portfolio, Price, StoreData, Transaction};
 
+mod basis;
+
 #[derive(Debug, Clone)]
 pub struct HoldingRow {
     pub portfolio_id: Id,
@@ -16,6 +18,8 @@ pub struct HoldingRow {
     pub quantity: Decimal,
     pub value: Option<Decimal>,
     pub net_invested: Option<Decimal>,
+    pub remaining_cost_basis: Option<Decimal>,
+    pub realized_pnl: Option<Decimal>,
     pub unrealized_pnl: Option<Decimal>,
     pub missing_valuation: bool,
 }
@@ -30,6 +34,8 @@ pub struct PortfolioRow {
     pub unrealized_pnl: Option<Decimal>,
     pub unresolved: usize,
     pub unresolved_pnl: usize,
+    pub realized_pnl: Option<Decimal>,
+    pub unresolved_realized_pnl: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -39,10 +45,22 @@ pub struct Report {
     pub total_liabilities: Decimal,
     pub net_value: Decimal,
     pub total_unrealized_pnl: Option<Decimal>,
+    pub total_realized_pnl: Option<Decimal>,
+    pub unresolved_realized_pnl: usize,
+    pub realized_returns: Vec<RealizedReturn>,
     pub unresolved_pnl: usize,
     pub portfolios: Vec<PortfolioRow>,
     pub holdings: Vec<HoldingRow>,
     pub negative_balances: Vec<HoldingRow>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RealizedReturn {
+    pub portfolio_id: Id,
+    pub asset_id: Id,
+    pub portfolio: String,
+    pub symbol: String,
+    pub pnl: Option<Decimal>,
 }
 
 pub fn build_report(data: &StoreData) -> Report {
@@ -51,6 +69,18 @@ pub fn build_report(data: &StoreData) -> Report {
     let balances = balances(data);
     let latest_prices = latest_prices(data);
     let mut holdings = Vec::new();
+    let positions = basis::replay(data, &base, &asset_map);
+    let realized_returns: Vec<_> = positions
+        .iter()
+        .filter(|(_, p)| p.disposed)
+        .map(|(&(portfolio_id, asset_id), p)| RealizedReturn {
+            portfolio_id,
+            asset_id,
+            portfolio: portfolio_name(data, portfolio_id),
+            symbol: asset_map[&asset_id].symbol.clone(),
+            pnl: p.realized,
+        })
+        .collect();
 
     for ((portfolio_id, asset_id), quantity) in balances {
         if quantity.is_zero() {
@@ -61,7 +91,16 @@ pub fn build_report(data: &StoreData) -> Report {
         };
         let value = value_in_base(data, asset, quantity, &base, &latest_prices, &asset_map);
         let net_invested = net_invested(data, portfolio_id, asset_id, &base, &asset_map);
-        let unrealized_pnl = value.zip(net_invested).map(|(v, i)| v - i);
+        let remaining_cost_basis = positions
+            .get(&(portfolio_id, asset_id))
+            .and_then(|p| p.basis);
+        let realized_pnl = positions
+            .get(&(portfolio_id, asset_id))
+            .filter(|p| p.disposed)
+            .and_then(|p| p.realized);
+        let unrealized_pnl = value
+            .zip(remaining_cost_basis)
+            .and_then(|(v, i)| v.checked_sub(i));
         holdings.push(HoldingRow {
             portfolio_id,
             asset_id,
@@ -72,13 +111,25 @@ pub fn build_report(data: &StoreData) -> Report {
             quantity,
             value,
             net_invested,
+            remaining_cost_basis,
+            realized_pnl,
             unrealized_pnl,
             missing_valuation: value.is_none(),
         });
     }
 
     holdings.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.symbol.cmp(&b.symbol)));
-    let portfolios = portfolio_rows(data, &holdings);
+    let mut portfolios = portfolio_rows(data, &holdings);
+    for portfolio in &mut portfolios {
+        (portfolio.realized_pnl, portfolio.unresolved_realized_pnl) = realized_total(
+            realized_returns
+                .iter()
+                .filter(|r| r.portfolio_id == portfolio.id)
+                .map(|r| r.pnl),
+        );
+    }
+    let (total_realized_pnl, unresolved_realized_pnl) =
+        realized_total(realized_returns.iter().map(|r| r.pnl));
     let total_assets = portfolios.iter().map(|p| p.assets).sum();
     let total_liabilities = portfolios.iter().map(|p| p.liabilities).sum();
     let net_value = total_assets - total_liabilities;
@@ -95,6 +146,9 @@ pub fn build_report(data: &StoreData) -> Report {
         total_liabilities,
         net_value,
         total_unrealized_pnl,
+        total_realized_pnl,
+        unresolved_realized_pnl,
+        realized_returns,
         unresolved_pnl,
         portfolios,
         holdings,
@@ -420,7 +474,24 @@ fn portfolio_row(portfolio: &Portfolio, holdings: &[HoldingRow]) -> PortfolioRow
         unrealized_pnl,
         unresolved: rows.filter(|holding| holding.missing_valuation).count(),
         unresolved_pnl,
+        realized_pnl: Some(Decimal::ZERO),
+        unresolved_realized_pnl: 0,
     }
+}
+
+fn realized_total(values: impl Iterator<Item = Option<Decimal>>) -> (Option<Decimal>, usize) {
+    let mut total = Some(Decimal::ZERO);
+    let mut known = false;
+    let mut missing = 0;
+    for value in values {
+        if let Some(value) = value {
+            known = true;
+            total = total.and_then(|t| t.checked_add(value));
+        } else {
+            missing += 1;
+        }
+    }
+    (if known || missing == 0 { total } else { None }, missing)
 }
 
 fn portfolio_name(data: &StoreData, id: Id) -> String {

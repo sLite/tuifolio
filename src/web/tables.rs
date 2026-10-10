@@ -76,6 +76,8 @@ pub(super) struct Summary {
     pub pnl: Amount,
     pub missing: usize,
     pub missing_pnl: usize,
+    pub realized: Amount,
+    pub missing_realized: usize,
     pub negative: usize,
 }
 
@@ -92,6 +94,8 @@ impl Summary {
                 .filter(|h| h.missing_valuation)
                 .count(),
             missing_pnl: report.unresolved_pnl,
+            realized: Amount::new(report.total_realized_pnl, precision),
+            missing_realized: report.unresolved_realized_pnl,
             negative: report.negative_balances.len(),
         }
     }
@@ -106,6 +110,7 @@ pub(super) struct HoldingView {
     pub quantity: String,
     pub value: Amount,
     pub invested: Amount,
+    pub basis: Amount,
     pub pnl: Amount,
     pub missing: bool,
     pub negative: bool,
@@ -126,6 +131,7 @@ impl HoldingView {
             quantity: holding.quantity.normalize().to_string(),
             value: Amount::new(holding.value, precision),
             invested: Amount::new(holding.net_invested, precision),
+            basis: Amount::new(holding.remaining_cost_basis, precision),
             pnl: Amount::new(holding.unrealized_pnl, precision),
             missing: holding.missing_valuation,
             negative: holding.kind != AssetKind::Liability && holding.quantity < Decimal::ZERO,
@@ -180,6 +186,8 @@ pub(super) struct PortfolioView {
     pub pnl: Amount,
     pub missing: usize,
     pub missing_pnl: usize,
+    pub realized: Amount,
+    pub missing_realized: usize,
 }
 
 impl PortfolioView {
@@ -193,8 +201,33 @@ impl PortfolioView {
             pnl: Amount::new(portfolio.unrealized_pnl, precision),
             missing: portfolio.unresolved,
             missing_pnl: portfolio.unresolved_pnl,
+            realized: Amount::new(portfolio.realized_pnl, precision),
+            missing_realized: portfolio.unresolved_realized_pnl,
         }
     }
+}
+
+pub(super) struct RealizedView {
+    pub portfolio: String,
+    pub symbol: String,
+    pub pnl: Amount,
+}
+
+pub(super) fn realized(
+    report: &Report,
+    portfolio: Option<Id>,
+    precision: u32,
+) -> Vec<RealizedView> {
+    report
+        .realized_returns
+        .iter()
+        .filter(|r| portfolio.is_none_or(|id| id == r.portfolio_id))
+        .map(|r| RealizedView {
+            portfolio: r.portfolio.clone(),
+            symbol: r.symbol.clone(),
+            pnl: Amount::new(r.pnl, precision),
+        })
+        .collect()
 }
 
 pub(super) struct TransactionView {

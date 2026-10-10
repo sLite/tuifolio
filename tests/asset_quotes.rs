@@ -169,7 +169,12 @@ fn asset_decreases_apply_proceeds_to_pnl_and_optionally_add_cash() {
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
         assert_eq!(fixture.holding().value, Some(Decimal::from(400000)));
         assert_eq!(fixture.holding().net_invested, Some(Decimal::from(360000)));
-        assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(40000)));
+        assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(64000)));
+        assert_eq!(
+            fixture.holding().remaining_cost_basis,
+            Some(Decimal::from(336000))
+        );
+        assert_eq!(fixture.holding().realized_pnl, Some(Decimal::from(-24000)));
     }
 }
 
@@ -303,7 +308,9 @@ fn quoted_asset_movements_work_for_market_priced_assets() {
         .unwrap();
     assert_eq!(holding.value, Some(Decimal::from(600)));
     assert_eq!(holding.net_invested, Some(Decimal::from(300)));
-    assert_eq!(holding.unrealized_pnl, Some(Decimal::from(300)));
+    assert_eq!(holding.remaining_cost_basis, Some(Decimal::from(480)));
+    assert_eq!(holding.unrealized_pnl, Some(Decimal::from(120)));
+    assert_eq!(holding.realized_pnl, Some(Decimal::from(180)));
     assert_eq!(fixture.cash_balance(), Decimal::from(-300));
 }
 

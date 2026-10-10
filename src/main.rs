@@ -124,6 +124,32 @@ fn summary_command(store: &Store) {
             report.unresolved_pnl
         );
     }
+    println!(
+        "Realized PnL: {}{}",
+        report
+            .total_realized_pnl
+            .map(money)
+            .unwrap_or_else(|| "Unavailable".into()),
+        if report.unresolved_realized_pnl > 0 && report.total_realized_pnl.is_some() {
+            " (partial)"
+        } else {
+            ""
+        }
+    );
+    if report.unresolved_realized_pnl > 0 {
+        println!(
+            "Warning: {} investment positions have unavailable realized PnL.",
+            report.unresolved_realized_pnl
+        );
+    }
+    for row in &report.realized_returns {
+        println!(
+            "Realized {} {}: {}",
+            row.portfolio,
+            row.symbol,
+            row.pnl.map(money).unwrap_or_else(|| "Unavailable".into())
+        );
+    }
     println!("Holdings: {}", report.holdings.len());
     println!("Negative balances: {}", report.negative_balances.len());
     for portfolio in report.portfolios {
@@ -166,12 +192,24 @@ fn holding_command(store: &Store, symbol: &str) {
         .filter(|holding| holding.symbol.eq_ignore_ascii_case(symbol))
     {
         println!(
-            "{} {} quantity={} value={} {}",
+            "{} {} quantity={} value={} {} remaining_basis={} unrealized_pnl={} realized_pnl={}",
             holding.portfolio,
             holding.symbol,
             holding.quantity,
             holding.value.map(money).unwrap_or_else(|| "n/a".into()),
-            report.base_currency
+            report.base_currency,
+            holding
+                .remaining_cost_basis
+                .map(money)
+                .unwrap_or_else(|| "Unavailable".into()),
+            holding
+                .unrealized_pnl
+                .map(money)
+                .unwrap_or_else(|| "Unavailable".into()),
+            holding
+                .realized_pnl
+                .map(money)
+                .unwrap_or_else(|| "Unavailable".into())
         );
     }
 }

@@ -53,7 +53,8 @@ runtime option; it adds no datastore fields.
 
 ## Web interface
 
-- **Overview** shows net worth, assets, liabilities, unrealized PnL, and holdings.
+- **Overview** shows net worth, assets, liabilities, unrealized PnL, remaining
+  basis, holdings, and a separate realized-return table including closed positions.
   Filter holdings by portfolio or search by symbol and name. Missing valuations
   and negative non-liability balances are identified explicitly.
 - **Portfolios** shows account totals and unrealized PnL, and lets you create
@@ -98,6 +99,26 @@ in Rust; quantities retain their full precision. Fiat valuations display two
 decimal places and crypto valuations display eight.
 
 ## Accounting and storage
+
+Investment positions use chronological weighted-average remaining cost.
+Unrealized PnL subtracts that remaining basis from the current valuation.
+Realized PnL is shown separately, including fully closed positions. Unknown
+acquisitions keep the remaining basis incomplete; current prices cannot fill
+historical conversion gaps. These are portfolio-performance figures, not tax
+reports. Cash FX performance is not included in investment PnL.
+
+Posted noncash exchanges update both cost pools without posting quantities twice.
+Acquisition fees increase basis; disposal fees reduce proceeds. Fees paid in the
+received investment asset reduce net received quantity while retaining the full
+purchase cost, rather than adding the same fee again. Other investment assets
+used to pay fees have a corresponding disposal. Crypto-to-crypto swaps treat
+third-asset fees as acquisition costs, consistently across equivalent Buy and
+Sell representations. Unquoted movements and transfer/expense classification
+still have limits; they do not infer historical transfers or staking income.
+
+The holdings table separates remaining basis from recorded net spending.
+Recorded net spending retains the primary-transaction cash-flow reference; it
+is not the remaining basis or a complete external-contribution/fee metric.
 
 The ledger-first JSON datastore lives in the platform's local data directory
 under `tuifolio/store.json`, unless you supply `--store`.
