@@ -153,7 +153,10 @@ Manual buys and sells require an asset quantity, an existing quote asset, and a
 total quote amount. The quote amount supplies cost basis or proceeds for PnL.
 Quote amounts may be zero but cannot be negative; asset quantities must remain
 positive. An explicit zero quote records a known zero cost basis and needs no
-exchange rate for that cost basis.
+exchange rate for that cost basis. Foreign-currency historical costs use only
+observations available at the transaction time, never the latest rate. Missing
+historical conversion data makes basis and PnL unavailable. A recorded exchange
+into the reporting currency supplies its own execution value in that currency.
 If no cost basis has been recorded for a holding, its PnL is unavailable. Zero
 quotes create no cash movement, even with **Post cash movement** selected.
 
@@ -228,7 +231,12 @@ Manual price recording lives on each asset's edit page and uses that asset's ID.
 An asset with a Yahoo symbol cannot accept new manual prices, including through
 the CLI. Clear the Yahoo symbol and save first. Existing quotes are retained when
 provider settings change. Cash exchange-rate refreshes can still replace manual
-cash quotes. Zero market prices are allowed for non-Cash assets, while Cash
+cash quotes. The optional UTC observation time records a dated price or FX
+correction without changing transactions. Leave it blank to record now. Future
+observations are rejected. The CLI equivalent is
+`add-price USD 0.9 EUR --at 2020-01-01T00:00:00Z`.
+
+Zero market prices are allowed for non-Cash assets, while Cash
 exchange rates must remain positive. Zero-valued crypto observations cannot be
 used as conversion denominators.
 

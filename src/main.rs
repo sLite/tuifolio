@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 
 use tuifolio::accounting::build_report;
 use tuifolio::formatting::money;
-use tuifolio::price_sync::{add_manual_price, sync_prices};
+use tuifolio::price_sync::{add_manual_price_at, sync_prices};
 use tuifolio::store::Store;
 use tuifolio::web;
 
@@ -36,6 +36,11 @@ enum Command {
         symbol: String,
         price: Decimal,
         currency: String,
+        #[arg(
+            long,
+            help = "Historical observation time in RFC 3339 format; defaults to now"
+        )]
+        at: Option<chrono::DateTime<chrono::Utc>>,
     },
     Base {
         currency: String,
@@ -77,7 +82,8 @@ fn execute_command(mut store: Store, command: Command) -> anyhow::Result<()> {
             symbol,
             price,
             currency,
-        } => add_price_command(&mut store, &symbol, price, &currency)?,
+            at,
+        } => add_price_command(&mut store, &symbol, price, &currency, at)?,
         Command::Base { currency } => base_command(&mut store, currency)?,
     }
     Ok(())
@@ -185,8 +191,15 @@ fn add_price_command(
     symbol: &str,
     price: Decimal,
     currency: &str,
+    at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> anyhow::Result<()> {
-    add_manual_price(store, symbol, price, currency)?;
+    add_manual_price_at(
+        store,
+        symbol,
+        price,
+        currency,
+        at.unwrap_or_else(chrono::Utc::now),
+    )?;
     store.save()?;
     println!("added manual price for {symbol}: {price} {currency}");
     Ok(())

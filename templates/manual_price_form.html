@@ -5,6 +5,8 @@
   <label>Price per unit<span class="private-input"><input name="price" value="{{ price_form.price }}" inputmode="decimal" placeholder="0.00" required><span class="private-mask" role="img" aria-label="Hidden amount">••••••</span></span></label>
   <label>Currency<input name="currency" value="{{ price_form.currency }}" list="price-currencies" maxlength="100" required></label>
   <datalist id="price-currencies">{% for currency in common.currencies %}<option value="{{ currency }}"></option>{% endfor %}</datalist>
+  <label>Observation time <span class="optional">optional, UTC</span><input name="observed_at" type="datetime-local" step="1" value="{{ price_form.observed_at }}"></label>
+  <p class="field-help">Leave blank for now, or record a dated historical price or exchange rate. Historical costs never use a newer observation.</p>
   <button class="button primary" type="submit">Save price</button>
   <p class="field-help">The newest quote for an asset and currency wins. Intrinsic valuation takes precedence over recorded prices.</p>
 </form>

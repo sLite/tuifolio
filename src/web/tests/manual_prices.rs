@@ -220,6 +220,54 @@ async fn htmx_price_saves_navigate_to_the_asset_editor() {
 }
 
 #[tokio::test]
+async fn dated_prices_restore_historical_basis_and_rejected_dates_preserve_drafts() {
+    let fixture = TestApp::new(true);
+    let usd = fixture.asset_id("USD").await;
+    let original = serde_json::to_value(fixture.persisted()).unwrap();
+    let response = fixture
+        .post(
+            &format!("/assets/{usd}/prices"),
+            "price=0.9&currency=EUR&observed_at=2099-01-01T00%3A00",
+        )
+        .await;
+    let page = html(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+    assert!(page.contains("cannot be in the future"));
+    assert!(page.contains("value=\"2099-01-01T00:00\""));
+    assert_eq!(serde_json::to_value(fixture.persisted()).unwrap(), original);
+    assert_eq!(
+        fixture
+            .post(
+                &format!("/assets/{usd}/prices"),
+                "price=0.9&currency=EUR&observed_at=2026-10-01T00%3A00"
+            )
+            .await
+            .status(),
+        StatusCode::SEE_OTHER
+    );
+    let data = fixture.persisted();
+    assert_eq!(
+        data.prices.last().unwrap().timestamp,
+        "2026-10-01T00:00:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&data.transactions).unwrap(),
+        original["transactions"]
+    );
+    let report = crate::accounting::build_report(&data);
+    assert!(
+        report
+            .holdings
+            .iter()
+            .find(|h| h.symbol == "BTC")
+            .unwrap()
+            .net_invested
+            .is_some()
+    );
+}
+
+#[tokio::test]
 async fn unknown_assets_cannot_record_prices() {
     let fixture = TestApp::new(true);
     let original = serde_json::to_value(fixture.persisted()).unwrap();

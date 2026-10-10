@@ -18,7 +18,7 @@ use super::{
 use crate::{
     assets::save_asset,
     model::{Asset, Id, StoreData},
-    price_sync::add_manual_price_for_asset,
+    price_sync::add_manual_price_for_asset_at,
 };
 
 pub(super) async fn assets(
@@ -185,7 +185,15 @@ async fn price_error_page(
 async fn save_price(state: &AppState, id: Id, form: &PriceForm) -> Result<(), WebError> {
     let input = form.input().map_err(WebError::invalid)?;
     state
-        .edit(move |store| add_manual_price_for_asset(store, id, input.price, &input.currency))
+        .edit(move |store| {
+            add_manual_price_for_asset_at(
+                store,
+                id,
+                input.price,
+                &input.currency,
+                input.observed_at.unwrap_or_else(chrono::Utc::now),
+            )
+        })
         .await
 }
 

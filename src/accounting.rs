@@ -329,11 +329,23 @@ fn transaction_quote_value(
     if amount.is_zero() {
         return Some(Decimal::ZERO);
     }
+    if matches!(asset.kind, AssetKind::Fiat | AssetKind::Crypto)
+        && asset.symbol.eq_ignore_ascii_case(base)
+    {
+        return Some(amount);
+    }
+    // A recorded trade into the reporting currency establishes its execution
+    // conversion without needing an unrelated current market observation.
+    let primary = assets.get(&transaction.base_asset_id)?;
+    if matches!(primary.kind, AssetKind::Fiat | AssetKind::Crypto)
+        && primary.symbol.eq_ignore_ascii_case(base)
+        && transaction.base_amount > Decimal::ZERO
+    {
+        return Some(transaction.base_amount);
+    }
     let historical_prices = prices_at(data, transaction.timestamp);
-    let latest_prices = latest_prices(data);
-    let rate = conversion_rate(&asset.symbol, base, &historical_prices, assets)
-        .or_else(|| conversion_rate(&asset.symbol, base, &latest_prices, assets))?;
-    Some(amount * rate)
+    let rate = conversion_rate(&asset.symbol, base, &historical_prices, assets)?;
+    amount.checked_mul(rate)
 }
 
 fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow> {

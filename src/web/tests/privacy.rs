@@ -29,6 +29,28 @@ fn masks_use_the_same_placeholder_for_all_amount_sizes_and_signs() {
 #[tokio::test]
 async fn reports_and_prices_wrap_all_displayed_financial_values() {
     let fixture = TestApp::new(true);
+    // This test exercises numeric PnL masking, so give the seeded foreign
+    // purchase a genuine historical FX observation rather than a latest fallback.
+    fixture
+        .state
+        .edit(|store| {
+            let usd = store
+                .data
+                .assets
+                .iter()
+                .find(|a| a.symbol == "USD")
+                .unwrap()
+                .id;
+            crate::price_sync::add_manual_price_for_asset_at(
+                store,
+                usd,
+                rust_decimal_macros::dec!(0.9),
+                "EUR",
+                "2026-10-01T00:00:00Z".parse().unwrap(),
+            )
+        })
+        .await
+        .unwrap();
     let data = fixture.persisted();
     let portfolio = data.portfolios[0].id;
     let btc = fixture.asset_id("BTC").await;

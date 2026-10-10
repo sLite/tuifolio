@@ -93,6 +93,16 @@ pub fn add_manual_price(
     price: Decimal,
     currency: &str,
 ) -> anyhow::Result<()> {
+    add_manual_price_at(store, symbol, price, currency, now())
+}
+
+pub fn add_manual_price_at(
+    store: &mut Store,
+    symbol: &str,
+    price: Decimal,
+    currency: &str,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<()> {
     let matches = store
         .data
         .assets
@@ -105,7 +115,7 @@ pub fn add_manual_price(
         "ambiguous asset symbol: {symbol}; use a unique symbol before adding prices"
     );
     let asset_id = matches[0].id;
-    add_manual_price_for_asset(store, asset_id, price, currency)
+    add_manual_price_for_asset_at(store, asset_id, price, currency, observed_at)
 }
 
 pub fn add_manual_price_for_asset(
@@ -114,6 +124,20 @@ pub fn add_manual_price_for_asset(
     price: Decimal,
     currency: &str,
 ) -> anyhow::Result<()> {
+    add_manual_price_for_asset_at(store, asset_id, price, currency, now())
+}
+
+pub fn add_manual_price_for_asset_at(
+    store: &mut Store,
+    asset_id: Id,
+    price: Decimal,
+    currency: &str,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        observed_at <= now(),
+        "price observation time cannot be in the future"
+    );
     anyhow::ensure!(!currency.trim().is_empty(), "price currency is required");
     let asset = store
         .data
@@ -135,7 +159,7 @@ pub fn add_manual_price_for_asset(
     );
     store.data.prices.push(Price {
         asset_id,
-        timestamp: now(),
+        timestamp: observed_at,
         price,
         currency: currency.trim().to_ascii_uppercase(),
         source: "manual".into(),

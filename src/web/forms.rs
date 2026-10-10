@@ -183,6 +183,7 @@ fn optional_asset_id(value: &str, role: &str) -> anyhow::Result<Option<Id>> {
 pub(super) struct PriceForm {
     pub price: String,
     pub currency: String,
+    pub observed_at: String,
 }
 
 impl PriceForm {
@@ -190,6 +191,14 @@ impl PriceForm {
         Ok(ManualPriceInput {
             price: decimal(&self.price, "price")?,
             currency: self.currency.trim().to_ascii_uppercase(),
+            observed_at: optional(&self.observed_at)
+                .map(|value| {
+                    NaiveDateTime::parse_from_str(&value, "%Y-%m-%dT%H:%M:%S%.f")
+                        .or_else(|_| NaiveDateTime::parse_from_str(&value, "%Y-%m-%dT%H:%M"))
+                        .map(|date| date.and_utc())
+                        .context("enter a valid price observation time in UTC")
+                })
+                .transpose()?,
         })
     }
 }
@@ -197,6 +206,7 @@ impl PriceForm {
 pub(super) struct ManualPriceInput {
     pub price: Decimal,
     pub currency: String,
+    pub observed_at: Option<chrono::DateTime<Utc>>,
 }
 
 #[derive(Deserialize)]
