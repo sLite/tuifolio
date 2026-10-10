@@ -57,7 +57,7 @@ impl Fixture {
             timestamp: chrono::Utc::now(),
             kind,
             base_asset_id: self.property,
-            base_amount: Decimal::from(350000),
+            base_amount: Decimal::from(350),
             quote_asset_id: Some(self.quote),
             quote_amount: amount,
             quote_ledger_effect: LedgerEffect::Ignore,
@@ -74,10 +74,10 @@ impl Fixture {
         assert_eq!(report.holdings.len(), 1);
         let holding = &report.holdings[0];
         assert_eq!(holding.asset_id, self.property);
-        assert_eq!(holding.value, Some(Decimal::from(350000)));
+        assert_eq!(holding.value, Some(Decimal::from(350)));
         assert_eq!(holding.net_invested, Some(Decimal::ZERO));
         assert_eq!(holding.unrealized_pnl, holding.value);
-        assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350000)));
+        assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350)));
     }
 }
 
@@ -93,7 +93,7 @@ fn gifted_property_has_a_known_zero_cost_basis_and_no_cash_movement() {
     assert_eq!(fixture.store.data.ledger_entries.len(), 1);
     assert_eq!(
         fixture.store.data.ledger_entries[0].quantity_delta,
-        Decimal::from(350000)
+        Decimal::from(350)
     );
     fixture.assert_zero_basis();
 }
@@ -104,7 +104,7 @@ fn blank_cost_basis_remains_unknown() {
     let input = fixture.input(TransactionKind::AssetIncrease, None);
     add_manual_transaction(&mut fixture.store, input).unwrap();
     let report = build_report(&fixture.store.data);
-    assert_eq!(report.holdings[0].value, Some(Decimal::from(350000)));
+    assert_eq!(report.holdings[0].value, Some(Decimal::from(350)));
     assert_eq!(report.holdings[0].net_invested, None);
     assert_eq!(report.holdings[0].unrealized_pnl, None);
 }

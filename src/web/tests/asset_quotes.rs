@@ -66,12 +66,12 @@ impl PropertyFixture {
     fn assert_zero_basis(&self) {
         let data = self.app.persisted();
         assert_eq!(data.transactions[0].quote_amount, Some(dec!(0)));
-        assert_eq!(data.transactions[0].base_amount, dec!(350000));
+        assert_eq!(data.transactions[0].base_amount, dec!(350));
         assert_eq!(data.ledger_entries.len(), 1);
         assert_eq!(data.ledger_entries[0].asset_id, self.asset_id);
         let report = build_report(&data);
         assert_eq!(report.holdings[0].net_invested, Some(dec!(0)));
-        assert_eq!(report.holdings[0].unrealized_pnl, Some(dec!(350000)));
+        assert_eq!(report.holdings[0].unrealized_pnl, Some(dec!(350)));
     }
 
     fn cash_balance(&self) -> rust_decimal::Decimal {
@@ -109,7 +109,7 @@ async fn creating_a_gifted_property_saves_zero_basis_and_prefills_it_in_the_edit
         .app
         .post(
             "/transactions/new",
-            &fixture.body(AssetIncrease, 350000, "0", Ignore),
+            &fixture.body(AssetIncrease, 350, "0", Ignore),
         )
         .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
@@ -131,7 +131,7 @@ async fn editing_unknown_basis_to_zero_preserves_the_transaction_and_creates_no_
         .app
         .post(
             "/transactions/new",
-            &fixture.body(AssetIncrease, 350000, "", Ignore),
+            &fixture.body(AssetIncrease, 350, "", Ignore),
         )
         .await;
     let previous = fixture.app.persisted().transactions[0].clone();
@@ -141,7 +141,7 @@ async fn editing_unknown_basis_to_zero_preserves_the_transaction_and_creates_no_
     );
     let path = format!("/transactions/{}/edit", previous.id);
     for amount in ["0", "0.00"] {
-        let body = fixture.body(AssetIncrease, 350000, amount, Ignore);
+        let body = fixture.body(AssetIncrease, 350, amount, Ignore);
         let response = fixture.app.submit_edit(&path, &body).await;
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         fixture.assert_zero_basis();
@@ -161,7 +161,7 @@ async fn invalid_gift_amounts_preserve_input_and_do_not_save() {
             .app
             .post(
                 "/transactions/new",
-                &fixture.body(AssetIncrease, 350000, "-1", Ignore),
+                &fixture.body(AssetIncrease, 350, "-1", Ignore),
             )
             .await,
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -185,31 +185,31 @@ async fn invalid_gift_amounts_preserve_input_and_do_not_save() {
 #[tokio::test]
 async fn property_costs_and_valuation_adjustments_render_correct_pnl() {
     let fixture = PropertyFixture::new().await;
-    for (quantity, amount) in [(255000, "420000"), (245000, "")] {
+    for (quantity, amount) in [(255, "420"), (245, "")] {
         let body = fixture.body(AssetIncrease, quantity, amount, Ignore);
         assert_eq!(
             fixture.app.post("/transactions/new", &body).await.status(),
             StatusCode::SEE_OTHER
         );
     }
-    fixture.assert_pnl(500000, 420000, 80000);
+    fixture.assert_pnl(500, 420, 80);
     assert_eq!(fixture.cash_balance(), dec!(0));
     let page = html(fixture.app.get("/").await, StatusCode::OK).await;
-    assert!(page.contains("500,000.00"));
-    assert!(page.contains("420,000.00"));
-    assert!(page.contains("80,000.00"));
+    assert!(page.contains("500.00"));
+    assert!(page.contains("420.00"));
+    assert!(page.contains("80.00"));
 }
 
 #[tokio::test]
 async fn posted_asset_increase_quotes_deduct_cash_and_persist_the_cost_basis() {
     let fixture = PropertyFixture::new().await;
-    let body = fixture.body(AssetIncrease, 500000, "420000", Post);
+    let body = fixture.body(AssetIncrease, 500, "420", Post);
     assert_eq!(
         fixture.app.post("/transactions/new", &body).await.status(),
         StatusCode::SEE_OTHER
     );
-    fixture.assert_pnl(500000, 420000, 80000);
-    assert_eq!(fixture.cash_balance(), dec!(-420000));
+    fixture.assert_pnl(500, 420, 80);
+    assert_eq!(fixture.cash_balance(), dec!(-420));
     assert_eq!(fixture.app.persisted().ledger_entries.len(), 2);
     let page = html(fixture.app.get("/transactions").await, StatusCode::OK).await;
     assert!(page.contains("Cash posted"));
@@ -218,9 +218,9 @@ async fn posted_asset_increase_quotes_deduct_cash_and_persist_the_cost_basis() {
 #[tokio::test]
 async fn posted_asset_decrease_quotes_add_cash_and_subtract_proceeds_from_net_invested() {
     let fixture = PropertyFixture::new().await;
-    let purchase = fixture.body(AssetIncrease, 500000, "420000", Ignore);
+    let purchase = fixture.body(AssetIncrease, 500, "420", Ignore);
     fixture.app.post("/transactions/new", &purchase).await;
-    let disposal = fixture.body(AssetDecrease, 100000, "60000", Post);
+    let disposal = fixture.body(AssetDecrease, 100, "60", Post);
     assert_eq!(
         fixture
             .app
@@ -229,23 +229,23 @@ async fn posted_asset_decrease_quotes_add_cash_and_subtract_proceeds_from_net_in
             .status(),
         StatusCode::SEE_OTHER
     );
-    fixture.assert_pnl(400000, 360000, 64000);
+    fixture.assert_pnl(400, 360, 64);
     assert_eq!(
         build_report(&fixture.app.persisted()).total_realized_pnl,
-        Some(dec!(-24000))
+        Some(dec!(-24))
     );
-    assert_eq!(fixture.cash_balance(), dec!(60000));
+    assert_eq!(fixture.cash_balance(), dec!(60));
     assert_eq!(fixture.app.persisted().ledger_entries.len(), 3);
 }
 
 #[tokio::test]
 async fn editing_the_asset_quote_cash_effect_updates_cash_and_preserves_the_record() {
     let fixture = PropertyFixture::new().await;
-    let body = fixture.body(AssetIncrease, 500000, "420000", Ignore);
+    let body = fixture.body(AssetIncrease, 500, "420", Ignore);
     fixture.app.post("/transactions/new", &body).await;
     let previous = fixture.app.persisted().transactions[0].clone();
     let path = format!("/transactions/{}/edit", previous.id);
-    let body = fixture.body(AssetIncrease, 500000, "420000", Post);
+    let body = fixture.body(AssetIncrease, 500, "420", Post);
     assert_eq!(
         fixture.app.submit_edit(&path, &body).await.status(),
         StatusCode::SEE_OTHER
@@ -254,8 +254,8 @@ async fn editing_the_asset_quote_cash_effect_updates_cash_and_preserves_the_reco
     assert_eq!(updated.id, previous.id);
     assert_eq!(updated.source_row_hash, previous.source_row_hash);
     assert_eq!(updated.quote_ledger_effect, Post);
-    fixture.assert_pnl(500000, 420000, 80000);
-    assert_eq!(fixture.cash_balance(), dec!(-420000));
+    fixture.assert_pnl(500, 420, 80);
+    assert_eq!(fixture.cash_balance(), dec!(-420));
     let page = html(fixture.app.get(&path).await, StatusCode::OK).await;
     assert!(page.contains("value=\"Post\" selected"));
 }

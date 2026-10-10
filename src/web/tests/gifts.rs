@@ -40,7 +40,7 @@ impl Fixture {
     fn body(&self, kind: &str) -> String {
         let portfolio = self.app.persisted().portfolios[0].id;
         format!(
-            "portfolio_id={portfolio}&timestamp=2026-10-08T21%3A00&kind={kind}&base_asset_id={}&base_amount=350000",
+            "portfolio_id={portfolio}&timestamp=2026-10-08T21%3A00&kind={kind}&base_asset_id={}&base_amount=350",
             self.asset
         )
     }
@@ -61,11 +61,8 @@ impl Fixture {
         assert_eq!(holding.net_invested, Some(dec!(0)));
         let fee = data.transactions[0].fee_amount.unwrap_or(dec!(0));
         assert_eq!(holding.remaining_cost_basis, Some(fee));
-        assert_eq!(holding.unrealized_pnl, Some(dec!(350000) - fee));
-        assert_eq!(
-            report.portfolios[0].unrealized_pnl,
-            Some(dec!(350000) - fee)
-        );
+        assert_eq!(holding.unrealized_pnl, Some(dec!(350) - fee));
+        assert_eq!(report.portfolios[0].unrealized_pnl, Some(dec!(350) - fee));
     }
 }
 
@@ -104,7 +101,7 @@ async fn changing_a_paid_transaction_to_gift_clears_quotes_and_preserves_fees_an
     let cash = fixture.app.asset_id("EUR").await;
     let extras = format!("&fee_asset_id={cash}&fee_amount=2&notes=Keep%20this%20note");
     let paid = fixture.body("Buy")
-        + &format!("&quote_asset_id={cash}&quote_amount=100000&quote_ledger_effect=Post")
+        + &format!("&quote_asset_id={cash}&quote_amount=100&quote_ledger_effect=Post")
         + &extras;
     fixture.app.post("/transactions/new", &paid).await;
     let previous = fixture.app.persisted().transactions[0].clone();

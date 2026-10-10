@@ -52,7 +52,7 @@ impl Fixture {
             timestamp: chrono::Utc::now(),
             kind: TransactionKind::Gift,
             base_asset_id: self.asset,
-            base_amount: Decimal::from(350000),
+            base_amount: Decimal::from(350),
             quote_asset_id: None,
             quote_amount: None,
             quote_ledger_effect: LedgerEffect::Post,
@@ -92,12 +92,9 @@ fn gifts_record_incoming_quantity_and_implicit_zero_cost_without_a_quote_currenc
     assert_eq!(transaction.quote_amount, None);
     assert_eq!(transaction.quote_ledger_effect, LedgerEffect::Ignore);
     assert_eq!(fixture.store.data.ledger_entries.len(), 1);
-    assert_eq!(fixture.holding().quantity, Decimal::from(350000));
+    assert_eq!(fixture.holding().quantity, Decimal::from(350));
     assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
-    assert_eq!(
-        fixture.holding().unrealized_pnl,
-        Some(Decimal::from(350000))
-    );
+    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(350)));
     assert!(fixture.store.data.prices.is_empty());
 }
 
@@ -106,18 +103,15 @@ fn gifts_do_not_erase_costs_from_paid_acquisitions_of_the_same_asset() {
     let mut fixture = Fixture::new();
     let mut paid = fixture.input();
     paid.kind = TransactionKind::Buy;
-    paid.base_amount = Decimal::from(50000);
+    paid.base_amount = Decimal::from(50);
     paid.quote_asset_id = Some(fixture.cash);
-    paid.quote_amount = Some(Decimal::from(40000));
+    paid.quote_amount = Some(Decimal::from(40));
     paid.quote_ledger_effect = LedgerEffect::Ignore;
     add_manual_transaction(&mut fixture.store, paid).unwrap();
     fixture.record();
-    assert_eq!(fixture.holding().value, Some(Decimal::from(400000)));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(40000)));
-    assert_eq!(
-        fixture.holding().unrealized_pnl,
-        Some(Decimal::from(360000))
-    );
+    assert_eq!(fixture.holding().value, Some(Decimal::from(400)));
+    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(40)));
+    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(360)));
 }
 
 #[test]
@@ -140,7 +134,7 @@ fn gifts_establish_zero_cost_only_for_their_own_portfolio_and_asset() {
         assert_eq!(holding.net_invested, None);
     }
     assert_eq!(fixture.holding().net_invested, Some(Decimal::ZERO));
-    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350000)));
+    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(350)));
 }
 
 #[test]
@@ -160,10 +154,7 @@ fn gift_fees_post_separately_from_the_implicit_zero_quote() {
         fixture.holding().remaining_cost_basis,
         Some(Decimal::from(2))
     );
-    assert_eq!(
-        fixture.holding().unrealized_pnl,
-        Some(Decimal::from(349998))
-    );
+    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(348)));
 }
 
 #[test]
@@ -172,7 +163,7 @@ fn changing_a_paid_acquisition_to_gift_removes_its_quote_and_preserves_identity(
     let mut paid = fixture.input();
     paid.kind = TransactionKind::Buy;
     paid.quote_asset_id = Some(fixture.cash);
-    paid.quote_amount = Some(Decimal::from(100000));
+    paid.quote_amount = Some(Decimal::from(100));
     let id = add_manual_transaction(&mut fixture.store, paid)
         .unwrap()
         .transaction_id;

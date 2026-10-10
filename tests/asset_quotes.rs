@@ -121,20 +121,20 @@ impl Fixture {
 #[test]
 fn property_costs_and_unquoted_valuation_increases_produce_the_expected_pnl() {
     let mut fixture = Fixture::new();
-    fixture.acquire(255000, 420000);
+    fixture.acquire(255, 420);
     fixture.record(
         TransactionKind::AssetIncrease,
-        245000,
+        245,
         None,
         LedgerEffect::Ignore,
     );
     let holding = fixture.holding();
-    assert_eq!(holding.value, Some(Decimal::from(500000)));
-    assert_eq!(holding.net_invested, Some(Decimal::from(420000)));
-    assert_eq!(holding.unrealized_pnl, Some(Decimal::from(80000)));
+    assert_eq!(holding.value, Some(Decimal::from(500)));
+    assert_eq!(holding.net_invested, Some(Decimal::from(420)));
+    assert_eq!(holding.unrealized_pnl, Some(Decimal::from(80)));
     assert_eq!(
         build_report(&fixture.store.data).total_unrealized_pnl,
-        Some(Decimal::from(80000))
+        Some(Decimal::from(80))
     );
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
 }
@@ -143,15 +143,15 @@ fn property_costs_and_unquoted_valuation_increases_produce_the_expected_pnl() {
 fn asset_increases_deduct_cash_only_when_posting_is_selected() {
     for effect in [LedgerEffect::Ignore, LedgerEffect::Post] {
         let mut fixture = Fixture::new();
-        fixture.record(TransactionKind::AssetIncrease, 500000, Some(420000), effect);
+        fixture.record(TransactionKind::AssetIncrease, 500, Some(420), effect);
         let expected = if effect == LedgerEffect::Post {
-            -420000
+            -420
         } else {
             0
         };
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
-        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420000)));
-        assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(80000)));
+        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+        assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(80)));
     }
 }
 
@@ -159,82 +159,75 @@ fn asset_increases_deduct_cash_only_when_posting_is_selected() {
 fn asset_decreases_apply_proceeds_to_pnl_and_optionally_add_cash() {
     for effect in [LedgerEffect::Ignore, LedgerEffect::Post] {
         let mut fixture = Fixture::new();
-        fixture.acquire(500000, 420000);
-        fixture.record(TransactionKind::AssetDecrease, 100000, Some(60000), effect);
-        let expected = if effect == LedgerEffect::Post {
-            60000
-        } else {
-            0
-        };
+        fixture.acquire(500, 420);
+        fixture.record(TransactionKind::AssetDecrease, 100, Some(60), effect);
+        let expected = if effect == LedgerEffect::Post { 60 } else { 0 };
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
-        assert_eq!(fixture.holding().value, Some(Decimal::from(400000)));
-        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(360000)));
-        assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(64000)));
+        assert_eq!(fixture.holding().value, Some(Decimal::from(400)));
+        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(360)));
+        assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(64)));
         assert_eq!(
             fixture.holding().remaining_cost_basis,
-            Some(Decimal::from(336000))
+            Some(Decimal::from(336))
         );
-        assert_eq!(fixture.holding().realized_pnl, Some(Decimal::from(-24000)));
+        assert_eq!(fixture.holding().realized_pnl, Some(Decimal::from(-24)));
     }
 }
 
 #[test]
 fn unquoted_valuation_adjustments_change_value_without_changing_cost_or_cash() {
     let mut fixture = Fixture::new();
-    fixture.acquire(255000, 420000);
+    fixture.acquire(255, 420);
     fixture.record(
         TransactionKind::AssetIncrease,
-        245000,
+        245,
         None,
         LedgerEffect::Post,
     );
     fixture.record(
         TransactionKind::AssetDecrease,
-        100000,
+        100,
         None,
         LedgerEffect::Post,
     );
-    assert_eq!(fixture.holding().value, Some(Decimal::from(400000)));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420000)));
-    assert_eq!(
-        fixture.holding().unrealized_pnl,
-        Some(Decimal::from(-20000))
-    );
+    assert_eq!(fixture.holding().value, Some(Decimal::from(400)));
+    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(-20)));
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
 }
 
 #[test]
 fn changing_the_cash_effect_rebuilds_cash_without_changing_cost_basis() {
     let mut fixture = Fixture::new();
-    let id = fixture.acquire(500000, 420000);
+    let id = fixture.acquire(500, 420);
     for effect in [LedgerEffect::Post, LedgerEffect::Ignore] {
-        let input = fixture.input(TransactionKind::AssetIncrease, 500000, Some(420000), effect);
+        let input = fixture.input(TransactionKind::AssetIncrease, 500, Some(420), effect);
         update_transaction(&mut fixture.store, id, input).unwrap();
         let expected = if effect == LedgerEffect::Post {
-            -420000
+            -420
         } else {
             0
         };
         assert_eq!(fixture.cash_balance(), Decimal::from(expected));
-        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420000)));
+        assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
     }
 }
 
 #[test]
 fn deleting_an_asset_decrease_removes_its_proceeds_and_cash_movement() {
     let mut fixture = Fixture::new();
-    fixture.acquire(500000, 420000);
+    fixture.acquire(500, 420);
     let id = fixture.record(
         TransactionKind::AssetDecrease,
-        100000,
-        Some(60000),
+        100,
+        Some(60),
         LedgerEffect::Post,
     );
     delete_transaction(&mut fixture.store, id).unwrap();
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
-    assert_eq!(fixture.holding().value, Some(Decimal::from(500000)));
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420000)));
-    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(80000)));
+    assert_eq!(fixture.holding().value, Some(Decimal::from(500)));
+    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
+    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(80)));
 }
 
 #[test]
@@ -244,24 +237,21 @@ fn asset_quotes_use_historical_exchange_rates_for_cost_basis() {
     add_manual_price(&mut fixture.store, "USD", Decimal::new(9, 1), "EUR").unwrap();
     let mut input = fixture.input(
         TransactionKind::AssetIncrease,
-        500000,
-        Some(420000),
+        500,
+        Some(420),
         LedgerEffect::Ignore,
     );
     input.quote_asset_id = Some(usd);
     add_manual_transaction(&mut fixture.store, input).unwrap();
     add_manual_price(&mut fixture.store, "USD", Decimal::new(8, 1), "EUR").unwrap();
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(378000)));
-    assert_eq!(
-        fixture.holding().unrealized_pnl,
-        Some(Decimal::from(122000))
-    );
+    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(378)));
+    assert_eq!(fixture.holding().unrealized_pnl, Some(Decimal::from(122)));
 }
 
 #[test]
 fn quoted_movements_are_scoped_to_the_holding_portfolio_and_asset() {
     let mut fixture = Fixture::new();
-    fixture.acquire(500000, 420000);
+    fixture.acquire(500, 420);
     let other_portfolio = create_portfolio(&mut fixture.store, "Other");
     let other_asset = create_asset(
         &mut fixture.store,
@@ -271,21 +261,21 @@ fn quoted_movements_are_scoped_to_the_holding_portfolio_and_asset() {
     );
     let mut elsewhere = fixture.input(
         TransactionKind::AssetIncrease,
-        100000,
-        Some(200000),
+        100,
+        Some(200),
         LedgerEffect::Post,
     );
     elsewhere.portfolio_id = other_portfolio;
     add_manual_transaction(&mut fixture.store, elsewhere).unwrap();
     let mut different_asset = fixture.input(
         TransactionKind::AssetIncrease,
-        100000,
-        Some(300000),
+        100,
+        Some(300),
         LedgerEffect::Ignore,
     );
     different_asset.base_asset_id = other_asset;
     add_manual_transaction(&mut fixture.store, different_asset).unwrap();
-    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420000)));
+    assert_eq!(fixture.holding().net_invested, Some(Decimal::from(420)));
     assert_eq!(fixture.cash_balance(), Decimal::ZERO);
 }
 
@@ -317,8 +307,8 @@ fn quoted_asset_movements_work_for_market_priced_assets() {
 #[test]
 fn reopening_rebuilds_cash_for_previously_saved_asset_quotes() {
     let mut fixture = Fixture::new();
-    fixture.record(AssetIncrease, 500000, Some(420000), Post);
-    fixture.record(AssetDecrease, 100000, Some(60000), Post);
+    fixture.record(AssetIncrease, 500, Some(420), Post);
+    fixture.record(AssetDecrease, 100, Some(60), Post);
     fixture
         .store
         .data
@@ -337,7 +327,7 @@ fn reopening_rebuilds_cash_for_previously_saved_asset_quotes() {
         .filter(|entry| entry.asset_id == cash)
         .map(|entry| entry.quantity_delta)
         .sum();
-    assert_eq!(cash_balance, Decimal::from(-360000));
+    assert_eq!(cash_balance, Decimal::from(-360));
     assert_eq!(reopened.data.ledger_entries.len(), 4);
     assert_eq!(
         serde_json::to_value(&reopened.data.transactions).unwrap(),

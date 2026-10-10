@@ -62,18 +62,18 @@ fn property_and_liability_movements_produce_net_worth_without_synthetic_history(
     let property = intrinsic_asset(&mut store, "HOME", AssetKind::Property, "EUR");
     let debt = intrinsic_asset(&mut store, "DEBT", AssetKind::Liability, "EUR");
     for (asset, kind, quantity) in [
-        (property, TransactionKind::AssetIncrease, 100000),
-        (property, TransactionKind::AssetIncrease, 25000),
-        (property, TransactionKind::AssetDecrease, 5000),
-        (debt, TransactionKind::LiabilityIncrease, 80000),
-        (debt, TransactionKind::LiabilityDecrease, 10000),
+        (property, TransactionKind::AssetIncrease, 100),
+        (property, TransactionKind::AssetIncrease, 25),
+        (property, TransactionKind::AssetDecrease, 5),
+        (debt, TransactionKind::LiabilityIncrease, 80),
+        (debt, TransactionKind::LiabilityDecrease, 10),
     ] {
         post(&mut store, portfolio, asset, kind, quantity);
     }
     let report = build_report(&store.data);
-    assert_eq!(report.total_assets, Decimal::from(120000));
-    assert_eq!(report.total_liabilities, Decimal::from(70000));
-    assert_eq!(report.net_value, Decimal::from(50000));
+    assert_eq!(report.total_assets, Decimal::from(120));
+    assert_eq!(report.total_liabilities, Decimal::from(70));
+    assert_eq!(report.net_value, Decimal::from(50));
     assert!(report.negative_balances.is_empty());
     assert_eq!(store.data.transactions.len(), 5);
 }
@@ -91,9 +91,9 @@ fn intrinsic_foreign_currency_values_use_explicit_exchange_rates() {
         portfolio,
         property,
         TransactionKind::AssetIncrease,
-        100000,
+        100,
     );
-    assert_eq!(build_report(&store.data).net_value, Decimal::from(90000));
+    assert_eq!(build_report(&store.data).net_value, Decimal::from(90));
 }
 
 #[test]
@@ -169,9 +169,9 @@ fn accounting_ignores_origin_identifiers_and_preserved_raw_rows() {
     add_manual_price(&mut store, "ABC", Decimal::from(100), "EUR").unwrap();
     let entries = serde_json::to_value(&store.data.ledger_entries).unwrap();
     let value = build_report(&store.data).net_value;
-    store.data.transactions[0].source = "delta_Fiat_historical.csv".into();
+    store.data.transactions[0].source = "synthetic-import.csv".into();
     store.data.transactions[0].source_row_hash = "old-hash".into();
-    store.data.transactions[0].notes = Some("SYNC-BASE-HOLDINGS_historical".into());
+    store.data.transactions[0].notes = Some("synthetic legacy note".into());
     store
         .data
         .raw_rows
@@ -222,24 +222,21 @@ fn portfolio_pnl_excludes_holdings_without_a_recorded_cost_basis() {
     let known = intrinsic_asset(&mut store, "HOME", AssetKind::Property, "EUR");
     let unknown = intrinsic_asset(&mut store, "UNKNOWN", AssetKind::Custom, "EUR");
     let cash = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
-    let mut input = movement(portfolio, known, TransactionKind::AssetIncrease, 500000);
+    let mut input = movement(portfolio, known, TransactionKind::AssetIncrease, 500);
     input.quote_asset_id = Some(cash);
-    input.quote_amount = Some(Decimal::from(420000));
+    input.quote_amount = Some(Decimal::from(420));
     add_manual_transaction(&mut store, input).unwrap();
     post(
         &mut store,
         portfolio,
         unknown,
         TransactionKind::AssetIncrease,
-        900000,
+        900,
     );
     let report = build_report(&store.data);
-    assert_eq!(report.portfolios[0].assets, Decimal::from(1400000));
-    assert_eq!(
-        report.portfolios[0].unrealized_pnl,
-        Some(Decimal::from(80000))
-    );
-    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(80000)));
+    assert_eq!(report.portfolios[0].assets, Decimal::from(1400));
+    assert_eq!(report.portfolios[0].unrealized_pnl, Some(Decimal::from(80)));
+    assert_eq!(report.total_unrealized_pnl, Some(Decimal::from(80)));
     assert_eq!(report.portfolios[0].unresolved_pnl, 1);
     assert_eq!(report.unresolved_pnl, 1);
 }

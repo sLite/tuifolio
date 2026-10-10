@@ -25,7 +25,7 @@ impl Fixture {
         let eur = create_asset(&mut store, "EUR", "Euro", AssetKind::Fiat);
         let usdc = create_asset(&mut store, "USDC", "USDC", AssetKind::Crypto);
         let btc = create_asset(&mut store, "BTC", "Bitcoin", AssetKind::Crypto);
-        for (asset, price) in [(usdc, dec!(1)), (btc, dec!(60000))] {
+        for (asset, price) in [(usdc, dec!(1)), (btc, dec!(300))] {
             add_manual_price_for_asset_at(
                 &mut store,
                 asset,
@@ -92,21 +92,21 @@ impl Fixture {
 
 #[test]
 fn bought_btc_consumes_usdc_basis_and_capitalizes_a_fee_paid_in_received_btc() {
-    for fee in [dec!(0.001), dec!(0.0001)] {
+    for fee in [dec!(0.2), dec!(0.05)] {
         let mut f = Fixture::new();
         f.post(
             TransactionKind::Buy,
             f.btc,
-            dec!(0.01),
+            dec!(2),
             Some((f.usdc, dec!(600))),
             Some((f.btc, fee)),
             "2022-01-01T00:00:00Z",
         );
         let btc = f.holding(f.btc);
         let usdc = f.holding(f.usdc);
-        assert_eq!(btc.quantity, dec!(0.01) - fee);
+        assert_eq!(btc.quantity, dec!(2) - fee);
         assert_eq!(btc.remaining_cost_basis, Some(dec!(600)));
-        assert_eq!(btc.unrealized_pnl, Some(-fee * dec!(60000)));
+        assert_eq!(btc.unrealized_pnl, Some(-fee * dec!(300)));
         assert_eq!(usdc.quantity, dec!(400));
         assert_eq!(usdc.remaining_cost_basis, Some(dec!(320)));
         assert_eq!(usdc.realized_pnl, Some(dec!(120)));
@@ -124,17 +124,17 @@ fn equivalent_buy_and_sell_representations_produce_identical_basis_and_profit() 
     buy.post(
         TransactionKind::Buy,
         buy.btc,
-        dec!(0.01),
+        dec!(2),
         Some((buy.usdc, dec!(600))),
-        Some((buy.btc, dec!(0.001))),
+        Some((buy.btc, dec!(0.2))),
         "2022-01-01T00:00:00Z",
     );
     sell.post(
         TransactionKind::Sell,
         sell.usdc,
         dec!(600),
-        Some((sell.btc, dec!(0.01))),
-        Some((sell.btc, dec!(0.001))),
+        Some((sell.btc, dec!(2))),
+        Some((sell.btc, dec!(0.2))),
         "2022-01-01T00:00:00Z",
     );
     for id in [buy.btc, buy.usdc] {
@@ -180,7 +180,7 @@ fn third_asset_fee_has_its_own_disposal_and_increases_acquisition_basis() {
     f.post(
         TransactionKind::Buy,
         f.btc,
-        dec!(0.01),
+        dec!(2),
         Some((f.usdc, dec!(600))),
         Some((eth, dec!(0.1))),
         "2022-01-01T00:00:00Z",
@@ -252,7 +252,7 @@ fn unknown_receipts_remain_unknown_instead_of_borrowing_other_units_costs() {
     f.post(
         TransactionKind::Deposit,
         f.btc,
-        dec!(0.01),
+        dec!(2),
         None,
         None,
         "2021-01-02T00:00:00Z",
@@ -260,7 +260,7 @@ fn unknown_receipts_remain_unknown_instead_of_borrowing_other_units_costs() {
     f.post(
         TransactionKind::Buy,
         f.btc,
-        dec!(0.01),
+        dec!(2),
         Some((f.usdc, dec!(600))),
         None,
         "2022-01-01T00:00:00Z",
@@ -332,7 +332,7 @@ fn a_fee_in_the_funding_asset_consumes_additional_units_without_double_counting(
     f.post(
         TransactionKind::Buy,
         f.btc,
-        dec!(0.01),
+        dec!(2),
         Some((f.usdc, dec!(600))),
         Some((f.usdc, dec!(5))),
         "2022-01-01T00:00:00Z",
@@ -350,7 +350,7 @@ fn ignored_quote_information_does_not_dispose_owned_quote_units() {
     f.post(
         TransactionKind::Buy,
         f.btc,
-        dec!(0.01),
+        dec!(2),
         Some((f.usdc, dec!(600))),
         None,
         "2022-01-01T00:00:00Z",
@@ -391,9 +391,9 @@ fn chronological_replay_is_independent_of_stored_vector_order_and_does_not_rewri
     f.post(
         TransactionKind::Buy,
         f.btc,
-        dec!(0.01),
+        dec!(2),
         Some((f.usdc, dec!(600))),
-        Some((f.btc, dec!(0.001))),
+        Some((f.btc, dec!(0.2))),
         "2022-01-01T00:00:00Z",
     );
     let expected = f.holding(f.usdc);

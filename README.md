@@ -242,9 +242,9 @@ Fees can still be recorded and deduct from the selected fee asset.
 **Buy**. **Asset decrease** accepts an optional quote amount as proceeds, like
 **Sell**. Costs add to net invested; proceeds subtract from it. Valuation-only
 increases or decreases can omit the quote without changing recorded costs or
-proceeds. For example, a property initially valued at 255000 EUR with a 420000 EUR
-cost, followed by an unquoted valuation increase of 245000 EUR, has a 500000 EUR
-value, 420000 EUR net invested, and 80000 EUR PnL.
+proceeds. In a synthetic example, an asset initially valued at 255 EUR with a
+420 EUR cost, followed by an unquoted valuation increase of 245 EUR, has a
+500 EUR value, 420 EUR net invested, and 80 EUR PnL.
 
 The quote and cash fields appear only for **Buy**, **Sell**, **Asset increase**,
 and **Asset decrease**. Changing the type hides and disables inapplicable fields;
@@ -366,14 +366,6 @@ Portfolio PnL sums the holdings with both a valuation and a recorded cost basis,
 using the selected base currency. The portfolio list and detail totals show the
 same value, with positive and negative amounts colored like the overview.
 
-### Private exports and repository history
-
-`delta-exports/` is ignored and its exports are no longer tracked. Local files
-remain on disk. Earlier commits still contain those private records. Removing
-them from the current tree does not remove them from Git history. Do not publish
-or share this history without a separate privacy review. This remediation does
-not rewrite history or push any commit.
-
 ### Saving data
 
 Saves atomically replace the JSON file. Web edits become active after that
@@ -408,8 +400,8 @@ remain in the datastore.
 | Transaction `source_row_hash` | Existing values survive edits. New transactions still write `manual:<id>` to satisfy the retained field. It is not used for matching or deduplication. | Remove the field or replace it with a general-purpose identifier if needed. |
 | Asset `metadata_source` | The `Automatic`/`User` values remain readable and writable; new or edited assets use `User`. The flag no longer controls provider inference or metadata reconciliation. | Remove the flag and its enum when the storage schema is cleaned up. |
 
-Existing transactions originally created from CSV, including property/mortgage
-history, remain ordinary ledger records. This change does not rewrite or delete
+Existing transactions originally created from CSV remain ordinary ledger
+records. This change does not rewrite or delete
 them, clear raw rows, or reset IDs.
 
 Quote/cash posting effects, intrinsic valuation currencies, prices and their
@@ -453,7 +445,7 @@ or assets. Vendored HTMX 2.0.8 and IBM Plex Sans have adjacent license files.
 The stylesheet uses a 17 px body font and 48 px standard controls, with larger
 spacing throughout. Responsive breakpoints are 1440, 1080, and 720 px.
 Tests construct assets, portfolios, transactions, and split events directly;
-they do not depend on CSV files or a personal datastore.
+they use synthetic values and do not depend on CSV files or a personal datastore.
 
 ```sh
 cargo fmt --check
