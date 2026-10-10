@@ -114,7 +114,6 @@ pub fn add_manual_price_for_asset(
     price: Decimal,
     currency: &str,
 ) -> anyhow::Result<()> {
-    anyhow::ensure!(price > Decimal::ZERO, "price must be greater than zero");
     anyhow::ensure!(!currency.trim().is_empty(), "price currency is required");
     let asset = store
         .data
@@ -122,6 +121,14 @@ pub fn add_manual_price_for_asset(
         .iter()
         .find(|asset| asset.id == asset_id)
         .ok_or_else(|| anyhow::anyhow!("unknown asset"))?;
+    if asset.kind == AssetKind::Fiat {
+        anyhow::ensure!(
+            price > Decimal::ZERO,
+            "price must be greater than zero for Cash exchange rates"
+        );
+    } else {
+        anyhow::ensure!(price >= Decimal::ZERO, "price cannot be negative");
+    }
     anyhow::ensure!(
         asset.allows_manual_pricing(),
         "clear the Yahoo symbol and save the asset before recording manual prices"
@@ -270,9 +277,33 @@ fn parse_yahoo_quote(json: &Value) -> Option<(Decimal, String)> {
         .as_array()?
         .first()?
         .get("meta")?;
-    let price = Decimal::from_f64_retain(meta.get("regularMarketPrice")?.as_f64()?)?;
-    let currency = meta.get("currency")?.as_str()?;
-    Some((price, currency.to_string()))
+    // arbitrary_precision preserves the JSON number's decimal spelling.
+    let raw = meta.get("regularMarketPrice")?.as_number()?.to_string();
+    let price = Decimal::from_str_exact(&raw)
+        .or_else(|_| Decimal::from_scientific(&raw))
+        .ok()?;
+    let currency = meta.get("currency")?.as_str()?.trim();
+    normalize_yahoo_units(price, currency)
+}
+
+fn normalize_yahoo_units(price: Decimal, currency: &str) -> Option<(Decimal, String)> {
+    if price < Decimal::ZERO {
+        return None;
+    }
+    let (price, currency) = match currency {
+        "GBp" | "GBX" => {
+            let normalized = price.checked_div(Decimal::from(100))?;
+            if !price.is_zero() && normalized.is_zero() {
+                return None;
+            }
+            (normalized, "GBP".to_string())
+        }
+        _ => (price, currency.to_ascii_uppercase()),
+    };
+    if !crate::currencies::is_fiat_code(&currency) && !matches!(currency.as_str(), "BTC" | "ETH") {
+        return None;
+    }
+    Some((price, currency))
 }
 
 pub fn merge_price_batch(
@@ -505,6 +536,43 @@ mod tests {
                     .contains("outside the supported decimal range")
             );
         }
+    }
+
+    #[test]
+    fn normalizes_pence_without_changing_pound_quotes() {
+        for currency in ["GBp", "GBX"] {
+            assert_eq!(
+                normalize_yahoo_units(dec!(250), currency),
+                Some((dec!(2.5), "GBP".into()))
+            );
+        }
+        assert_eq!(
+            normalize_yahoo_units(dec!(250), "GBP"),
+            Some((dec!(250), "GBP".into()))
+        );
+        assert_eq!(
+            normalize_yahoo_units(Decimal::ZERO, "GBp"),
+            Some((Decimal::ZERO, "GBP".into()))
+        );
+        assert!(normalize_yahoo_units(dec!(-1), "USD").is_none());
+        assert!(normalize_yahoo_units(dec!(1), "UNSUPPORTED").is_none());
+    }
+
+    #[test]
+    fn provider_numbers_keep_their_exact_decimal_spelling() {
+        let json: Value = serde_json::from_str(r#"{"chart":{"result":[{"meta":{"regularMarketPrice":1.234567890123456789,"currency":"USD"}}]}}"#).unwrap();
+        assert_eq!(
+            parse_yahoo_quote(&json),
+            Some((dec!(1.234567890123456789), "USD".into()))
+        );
+        let scientific: Value = serde_json::from_str(
+            r#"{"chart":{"result":[{"meta":{"regularMarketPrice":1.25e-7,"currency":"USD"}}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_yahoo_quote(&scientific),
+            Some((dec!(0.000000125), "USD".into()))
+        );
     }
 
     #[test]

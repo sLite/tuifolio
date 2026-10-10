@@ -1,6 +1,6 @@
 <form id="manual-price" class="panel editor-context price-editor" action="/assets/{{ id }}/prices" method="post" hx-disabled-elt="find button">
   <h2>Manual price</h2>
-  <p class="description">Record a price per unit for {{ form.symbol }}.</p>
+  <p class="description">Record a price per unit for {{ form.symbol }}. Zero marks a worthless market-valued holding; Cash exchange rates must remain positive.</p>
   {% if !price_error.is_empty() %}<div class="notice error" role="alert">{{ price_error }}</div>{% endif %}
   <label>Price per unit<span class="private-input"><input name="price" value="{{ price_form.price }}" inputmode="decimal" placeholder="0.00" required><span class="private-mask" role="img" aria-label="Hidden amount">••••••</span></span></label>
   <label>Currency<input name="currency" value="{{ price_form.currency }}" list="price-currencies" maxlength="100" required></label>

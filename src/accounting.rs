@@ -166,6 +166,9 @@ fn value_in_base(
         return Some(quantity * rate);
     }
     let price = price_for_asset(asset.id, base, prices)?;
+    if asset.kind == AssetKind::Fiat && price.price <= Decimal::ZERO {
+        return None;
+    }
     let rate = conversion_rate(&price.currency, base, prices, assets)?;
     let unit_price =
         crate::ledger::split_adjusted_price(data, asset.id, price.timestamp, price.price).ok()?;
@@ -208,7 +211,12 @@ fn conversion_rate(
         } else {
             fiat_rate("USD", to, prices, assets)?
         };
-        return Some(crypto_usd * usd_to_target);
+        if crypto_usd <= Decimal::ZERO {
+            return None;
+        }
+        return crypto_usd
+            .checked_mul(usd_to_target)
+            .filter(|rate| *rate > Decimal::ZERO);
     }
     if let Some(crypto) = crypto_asset(to, assets) {
         let from_usd = if from == "USD" {
@@ -217,7 +225,12 @@ fn conversion_rate(
             fiat_rate(from, "USD", prices, assets)?
         };
         let crypto_usd = prices.get(&(crypto.id, "USD".to_string()))?.price;
-        return Some(from_usd / crypto_usd);
+        if crypto_usd <= Decimal::ZERO {
+            return None;
+        }
+        return from_usd
+            .checked_div(crypto_usd)
+            .filter(|rate| *rate > Decimal::ZERO);
     }
     None
 }
@@ -234,7 +247,9 @@ fn fiat_rate(
     let from_asset = assets
         .values()
         .find(|asset| asset.symbol == from && asset.kind == AssetKind::Fiat)?;
-    if let Some(price) = prices.get(&(from_asset.id, to.to_string())) {
+    if let Some(price) = prices.get(&(from_asset.id, to.to_string()))
+        && price.price > Decimal::ZERO
+    {
         return Some(price.price);
     }
     let to_asset = assets
@@ -242,7 +257,9 @@ fn fiat_rate(
         .find(|asset| asset.symbol == to && asset.kind == AssetKind::Fiat)?;
     prices
         .get(&(to_asset.id, from.to_string()))
-        .map(|price| Decimal::ONE / price.price)
+        .filter(|price| price.price > Decimal::ZERO)
+        .and_then(|price| Decimal::ONE.checked_div(price.price))
+        .filter(|rate| *rate > Decimal::ZERO)
 }
 
 fn crypto_asset<'a>(symbol: &str, assets: &'a HashMap<Id, &Asset>) -> Option<&'a Asset> {

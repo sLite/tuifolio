@@ -137,6 +137,68 @@ async fn clearing_a_yahoo_symbol_enables_manual_price_recording() {
 }
 
 #[tokio::test]
+async fn worthless_market_holding_can_be_marked_zero_without_losing_its_history() {
+    use crate::{
+        assets::{AssetInput, save_asset},
+        model::AssetKind,
+        price_sync::add_manual_price,
+    };
+    let fixture = TestApp::with_assets();
+    let id = fixture
+        .state
+        .edit(|store| {
+            let id = save_asset(
+                store,
+                None,
+                AssetInput {
+                    symbol: "WORTHLESS".into(),
+                    name: "Worthless".into(),
+                    kind: AssetKind::Stock,
+                    yahoo_symbol: None,
+                    tradingview_symbol: None,
+                    valuation_currency: None,
+                },
+            )?;
+            Ok(id)
+        })
+        .await
+        .unwrap();
+    let portfolio = fixture.persisted().portfolios[0].id;
+    let euro = fixture.asset_id("EUR").await;
+    let body = format!(
+        "portfolio_id={portfolio}&base_asset_id={id}&kind=Buy&base_amount=1&quote_asset_id={euro}&quote_amount=100&quote_ledger_effect=Ignore&timestamp=2026-01-01T00%3A00"
+    );
+    assert_eq!(
+        fixture.post("/transactions/new", &body).await.status(),
+        StatusCode::SEE_OTHER
+    );
+    fixture
+        .state
+        .edit(|store| add_manual_price(store, "WORTHLESS", dec!(100), "EUR"))
+        .await
+        .unwrap();
+    let transactions = serde_json::to_value(fixture.persisted().transactions).unwrap();
+    let ledger = serde_json::to_value(fixture.persisted().ledger_entries).unwrap();
+    let response = fixture
+        .post(&format!("/assets/{id}/prices"), "price=0&currency=EUR")
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let data = fixture.persisted();
+    assert_eq!(
+        serde_json::to_value(&data.transactions).unwrap(),
+        transactions
+    );
+    assert_eq!(serde_json::to_value(&data.ledger_entries).unwrap(), ledger);
+    let report = crate::accounting::build_report(&data);
+    let holding = report.holdings.iter().find(|h| h.asset_id == id).unwrap();
+    assert_eq!(holding.value, Some(dec!(0)));
+    assert_eq!(holding.unrealized_pnl, Some(dec!(-100)));
+    assert!(!holding.missing_valuation);
+    let page = html(fixture.get("/").await, StatusCode::OK).await;
+    assert!(page.contains("-100.00"));
+}
+
+#[tokio::test]
 async fn htmx_price_saves_navigate_to_the_asset_editor() {
     let fixture = TestApp::new(true);
     let usd = fixture.asset_id("USD").await;

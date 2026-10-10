@@ -219,11 +219,18 @@ include their exchange, such as `NASDAQ:AAPL` or `CRYPTO:BTCUSD`. Clear a Yahoo
 symbol to use manual market prices; clear a TradingView symbol to remove the
 chart link. Cash uses exchange rates independently of its Yahoo symbol field.
 
+Yahoo pence units `GBp` and `GBX` normalize to GBP by dividing by 100.
+Provider numeric values are parsed directly as decimals, including scientific
+notation, without an intermediate binary float. Unsupported provider units are
+not stored as usable observations.
+
 Manual price recording lives on each asset's edit page and uses that asset's ID.
 An asset with a Yahoo symbol cannot accept new manual prices, including through
 the CLI. Clear the Yahoo symbol and save first. Existing quotes are retained when
 provider settings change. Cash exchange-rate refreshes can still replace manual
-cash quotes.
+cash quotes. Zero market prices are allowed for non-Cash assets, while Cash
+exchange rates must remain positive. Zero-valued crypto observations cannot be
+used as conversion denominators.
 
 For property, liabilities, and custom assets, an intrinsic valuation currency
 means each unit of quantity equals one unit of that currency. It takes
