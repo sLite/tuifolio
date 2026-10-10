@@ -288,6 +288,14 @@ Portfolio PnL sums the holdings with both a valuation and a recorded cost basis,
 using the selected base currency. The portfolio list and detail totals show the
 same value, with positive and negative amounts colored like the overview.
 
+### Private exports and repository history
+
+`delta-exports/` is ignored and its exports are no longer tracked. Local files
+remain on disk. Earlier commits still contain those private records. Removing
+them from the current tree does not remove them from Git history. Do not publish
+or share this history without a separate privacy review. This remediation does
+not rewrite history or push any commit.
+
 ### Saving data
 
 Saves atomically replace the JSON file. Web edits become active after that
