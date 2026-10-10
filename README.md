@@ -225,7 +225,10 @@ chart link. Cash uses exchange rates independently of its Yahoo symbol field.
 Yahoo pence units `GBp` and `GBX` normalize to GBP by dividing by 100.
 Provider numeric values are parsed directly as decimals, including scientific
 notation, without an intermediate binary float. Unsupported provider units are
-not stored as usable observations.
+not stored as usable observations. Retained pence observations are also scaled
+in calculations without rewriting their records. Currency identity is scoped
+to Cash/Crypto asset IDs, with Cash identities for fiat units. An investment
+that shares a currency ticker does not receive an implicit unit price of one.
 
 Manual price recording lives on each asset's edit page and uses that asset's ID.
 An asset with a Yahoo symbol cannot accept new manual prices, including through
@@ -269,7 +272,11 @@ immediately. Original transactions, quote amounts, fees, and recorded prices are
 retained. Multiple splits compound under the existing ledger rules. Derived
 market prices are adjusted inversely when their recorded timestamp predates a
 split, keeping their units consistent with the rebuilt quantities. Post-split
-observations are not adjusted again.
+observations are not adjusted again. Market valuation chooses the newest
+convertible recorded observation, not an older quote merely because it already
+uses the reporting currency. If the newest quote cannot be converted, an older
+convertible quote remains available. Equal timestamps prefer the direct
+reporting-currency quote.
 
 Dates must use `YYYY-MM-DD`; ratio values must be positive decimals and must change
 the quantity. Only one split per asset and date can be saved. Failed validation,

@@ -119,7 +119,10 @@ fn balances(data: &StoreData) -> BTreeMap<(Id, Id), Decimal> {
 fn latest_prices(data: &StoreData) -> HashMap<(Id, String), &Price> {
     let mut prices = HashMap::new();
     for price in &data.prices {
-        let key = (price.asset_id, price.currency.clone());
+        let key = (
+            price.asset_id,
+            crate::currencies::quote_unit(&price.currency).0,
+        );
         let should_replace = prices
             .get(&key)
             .map(|current: &&Price| current.timestamp < price.timestamp)
@@ -138,7 +141,10 @@ fn prices_at(data: &StoreData, timestamp: DateTime<Utc>) -> HashMap<(Id, String)
         .iter()
         .filter(|price| price.timestamp <= timestamp)
     {
-        let key = (price.asset_id, price.currency.clone());
+        let key = (
+            price.asset_id,
+            crate::currencies::quote_unit(&price.currency).0,
+        );
         let should_replace = prices
             .get(&key)
             .map(|current: &&Price| current.timestamp < price.timestamp)
@@ -158,17 +164,22 @@ fn value_in_base(
     prices: &HashMap<(Id, String), &Price>,
     assets: &HashMap<Id, &Asset>,
 ) -> Option<Decimal> {
-    if asset.symbol == base {
+    if currency_identity(data, asset, base) {
         return Some(quantity);
     }
     if let Some(currency) = &asset.valuation_currency {
         let rate = conversion_rate(currency, base, prices, assets)?;
-        return Some(quantity * rate);
+        return quantity.checked_mul(rate);
     }
-    let price = price_for_asset(asset.id, base, prices)?;
-    if asset.kind == AssetKind::Fiat && price.price <= Decimal::ZERO {
-        return None;
+    if asset.kind == AssetKind::Fiat {
+        return quantity.checked_mul(conversion_rate(
+            &asset.symbol.to_ascii_uppercase(),
+            base,
+            prices,
+            assets,
+        )?);
     }
+    let price = price_for_asset(asset.id, base, prices, assets)?;
     let rate = conversion_rate(&price.currency, base, prices, assets)?;
     let unit_price =
         crate::ledger::split_adjusted_price(data, asset.id, price.timestamp, price.price).ok()?;
@@ -179,20 +190,40 @@ fn price_for_asset<'a>(
     asset_id: Id,
     base: &str,
     prices: &'a HashMap<(Id, String), &Price>,
+    assets: &HashMap<Id, &Asset>,
 ) -> Option<&'a Price> {
     prices
-        .get(&(asset_id, base.to_string()))
+        .values()
         .copied()
-        .or_else(|| {
-            prices
-                .iter()
-                .filter(|((id, _), _)| *id == asset_id)
-                .map(|(_, price)| *price)
-                .max_by_key(|price| price.timestamp)
+        .filter(|price| price.asset_id == asset_id)
+        .filter(|price| conversion_rate(&price.currency, base, prices, assets).is_some())
+        .max_by(|a, b| {
+            a.timestamp
+                .cmp(&b.timestamp)
+                .then_with(|| (a.currency == base).cmp(&(b.currency == base)))
+                .then_with(|| a.currency.cmp(&b.currency))
         })
 }
 
+fn currency_identity(data: &StoreData, asset: &Asset, base: &str) -> bool {
+    crate::currencies::currency_asset(data, base).is_some_and(|currency| currency.id == asset.id)
+}
+
 fn conversion_rate(
+    from: &str,
+    to: &str,
+    prices: &HashMap<(Id, String), &Price>,
+    assets: &HashMap<Id, &Asset>,
+) -> Option<Decimal> {
+    let (from, source_scale) = crate::currencies::quote_unit(from);
+    let (to, target_scale) = crate::currencies::quote_unit(to);
+    conversion_rate_canonical(&from, &to, prices, assets)?
+        .checked_mul(source_scale)?
+        .checked_div(target_scale)
+        .filter(|rate| *rate > Decimal::ZERO)
+}
+
+fn conversion_rate_canonical(
     from: &str,
     to: &str,
     prices: &HashMap<(Id, String), &Price>,
@@ -244,29 +275,37 @@ fn fiat_rate(
     if from == to {
         return Some(Decimal::ONE);
     }
-    let from_asset = assets
-        .values()
-        .find(|asset| asset.symbol == from && asset.kind == AssetKind::Fiat)?;
-    if let Some(price) = prices.get(&(from_asset.id, to.to_string()))
+    let from_asset =
+        unique_currency_asset(from, assets).filter(|asset| asset.kind == AssetKind::Fiat);
+    if let Some(from_asset) = from_asset
+        && let Some(price) = prices.get(&(from_asset.id, to.to_string()))
         && price.price > Decimal::ZERO
     {
-        return Some(price.price);
+        return price
+            .price
+            .checked_mul(crate::currencies::quote_unit(&price.currency).1)
+            .filter(|rate| *rate > Decimal::ZERO);
     }
-    let to_asset = assets
-        .values()
-        .find(|asset| asset.symbol == to && asset.kind == AssetKind::Fiat)?;
+    let to_asset =
+        unique_currency_asset(to, assets).filter(|asset| asset.kind == AssetKind::Fiat)?;
     prices
         .get(&(to_asset.id, from.to_string()))
         .filter(|price| price.price > Decimal::ZERO)
-        .and_then(|price| Decimal::ONE.checked_div(price.price))
+        .and_then(|price| {
+            price
+                .price
+                .checked_mul(crate::currencies::quote_unit(&price.currency).1)
+        })
+        .and_then(|rate| Decimal::ONE.checked_div(rate))
         .filter(|rate| *rate > Decimal::ZERO)
 }
 
 fn crypto_asset<'a>(symbol: &str, assets: &'a HashMap<Id, &Asset>) -> Option<&'a Asset> {
-    assets
-        .values()
-        .copied()
-        .find(|asset| asset.symbol == symbol && asset.kind == AssetKind::Crypto)
+    unique_currency_asset(symbol, assets).filter(|asset| asset.kind == AssetKind::Crypto)
+}
+
+fn unique_currency_asset<'a>(symbol: &str, assets: &'a HashMap<Id, &Asset>) -> Option<&'a Asset> {
+    crate::currencies::currency_asset_from(assets.values().copied(), symbol)
 }
 
 enum CostBasisChange {
@@ -329,23 +368,25 @@ fn transaction_quote_value(
     if amount.is_zero() {
         return Some(Decimal::ZERO);
     }
-    if matches!(asset.kind, AssetKind::Fiat | AssetKind::Crypto)
-        && asset.symbol.eq_ignore_ascii_case(base)
-    {
+    let amount =
+        crate::ledger::split_adjusted_amount(data, asset.id, transaction.timestamp, amount).ok()?;
+    if currency_identity(data, asset, base) {
         return Some(amount);
     }
     // A recorded trade into the reporting currency establishes its execution
     // conversion without needing an unrelated current market observation.
     let primary = assets.get(&transaction.base_asset_id)?;
-    if matches!(primary.kind, AssetKind::Fiat | AssetKind::Crypto)
-        && primary.symbol.eq_ignore_ascii_case(base)
-        && transaction.base_amount > Decimal::ZERO
-    {
-        return Some(transaction.base_amount);
+    if currency_identity(data, primary, base) && transaction.base_amount > Decimal::ZERO {
+        return crate::ledger::split_adjusted_amount(
+            data,
+            primary.id,
+            transaction.timestamp,
+            transaction.base_amount,
+        )
+        .ok();
     }
     let historical_prices = prices_at(data, transaction.timestamp);
-    let rate = conversion_rate(&asset.symbol, base, &historical_prices, assets)?;
-    amount.checked_mul(rate)
+    value_in_base(data, asset, amount, base, &historical_prices, assets)
 }
 
 fn portfolio_rows(data: &StoreData, holdings: &[HoldingRow]) -> Vec<PortfolioRow> {

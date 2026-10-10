@@ -368,9 +368,11 @@ fn quote_settings_match(previous: &Asset, current: &Asset) -> bool {
 }
 
 fn is_fiat(symbol: &str, assets: &[Asset]) -> bool {
-    assets
-        .iter()
-        .any(|asset| asset.symbol == symbol && asset.kind == AssetKind::Fiat)
+    if crate::currencies::is_fiat_code(&symbol.trim().to_ascii_uppercase()) {
+        return true;
+    }
+    crate::currencies::currency_asset_from(assets.iter(), symbol)
+        .is_some_and(|asset| asset.kind == AssetKind::Fiat)
 }
 
 fn needs_price(asset: &Asset) -> bool {
@@ -463,8 +465,13 @@ mod tests {
         let mut missing_usd = assets.clone();
         missing_usd.retain(|asset| asset.symbol != "USD");
         assert_eq!(
-            conversion_rate("EUR", "BTC", &missing_usd, no_fetch).unwrap(),
-            None
+            conversion_rate("EUR", "BTC", &missing_usd, |symbol| match symbol {
+                "EURUSD=X" => Ok(Some((dec!(1.25), "USD".into()))),
+                "BTC-USD" => Ok(Some((dec!(50000), "USD".into()))),
+                _ => panic!("unexpected quote request"),
+            })
+            .unwrap(),
+            Some(dec!(0.000025))
         );
         let mut unmapped = assets;
         unmapped[2].yahoo_symbol = None;
@@ -560,6 +567,18 @@ mod tests {
                     .contains("outside the supported decimal range")
             );
         }
+    }
+
+    #[test]
+    fn fiat_units_do_not_use_crypto_assets_with_the_same_display_label() {
+        let mut assets = conversion_assets();
+        assets[2].symbol = "GBP".into();
+        let rate = conversion_rate("GBP", "EUR", &assets, |symbol| {
+            assert_eq!(symbol, "GBPEUR=X");
+            Ok(Some((dec!(1.25), "EUR".into())))
+        })
+        .unwrap();
+        assert_eq!(rate, Some(dec!(1.25)));
     }
 
     #[test]

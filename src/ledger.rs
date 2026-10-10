@@ -127,7 +127,7 @@ fn base_sign(kind: TransactionKind) -> Decimal {
     }
 }
 
-fn split_adjusted_amount(
+pub(crate) fn split_adjusted_amount(
     data: &StoreData,
     asset_id: Id,
     timestamp: DateTime<Utc>,
